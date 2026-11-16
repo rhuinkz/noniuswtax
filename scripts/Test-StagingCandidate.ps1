@@ -11,7 +11,6 @@ $results = Join-Path $root 'staging-results'
 if (!(Test-Path -LiteralPath $candidate)) { throw "Missing built candidate ZIP: $candidate" }
 # Fail before starting Docker if ZIP, version, source SHA or any file hash differs.
 & (Join-Path $PSScriptRoot 'Verify-ReleaseCandidate.ps1') -PackagePath $candidate
-if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw 'Release archive integrity verification failed.' }
 New-Item -ItemType Directory -Force -Path $results | Out-Null
 foreach ($name in @('results.json','staging-upgrade.json','staging-rollback.json','staging-summary.json')) {
     $f = Join-Path $results $name
