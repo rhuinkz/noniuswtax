@@ -41,7 +41,10 @@ try {
     } catch { Write-Host ('BROWSER/INTEGRATION CHECK FAILED: ' + $_.Exception.Message) -ForegroundColor Red }
     Write-Host 'STAGE 3/4: Full synthetic SQL backup and fresh restore, including triggers...' -ForegroundColor Cyan
     try {
-        Run-Docker ($baseArgs + @('exec', '-T', 'db', 'bash', '/suite-tests/backup-restore.sh'))
+        # Windows Git checkouts may convert mounted .sh files to CRLF. Normalize
+        # in memory inside the disposable DB container, without modifying local files.
+        $normalizer = 'tr -d ''\015'' < /suite-tests/backup-restore.sh | bash'
+        Run-Docker ($baseArgs + @('exec', '-T', 'db', 'sh', '-ec', $normalizer))
         $restorePassed = $true
     } catch { Write-Host ('BACKUP/RESTORE CHECK FAILED: ' + $_.Exception.Message) -ForegroundColor Red }
     Write-Host 'STAGE 4/4: Generate one consolidated HTML/JSON release report...' -ForegroundColor Cyan
