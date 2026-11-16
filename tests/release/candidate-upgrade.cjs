@@ -1,0 +1,128 @@
+'use strict';
+// Synthetic-only in-container rehearsal of the actual v0.4.57-rc.1 updater ZIP.
+// Never connects to Hostinger; no real data. A second script verifies rollback.
+const { chromium } = require('@playwright/test');
+const mysql = require('mysql2/promise');
+const fs = require('fs');
+const crypto = require('crypto');
+const BASE = process.env.BASE_URL || 'http://web';
+const OUT = '/suite/output';
+const VERSION = '0.4.57-rc.1';
+const EXPECTED_SHA = 'e8d1fe062073f81d68bd0c2707951a0dcae1543a8d5c1aa0dd074a1e5ccb367a';
+const CANDIDATE = '/suite/candidate/noniuswtax-0.4.57-rc.1-STAGING-ONLY-adf3fb4.zip';
+const EVIDENCE = OUT + '/staging-upgrade.json';
+function check(condition, message) { if (!condition) throw Error(message); }
+function connect() {
+  return mysql.createConnection({
+    host: 'db', user: 'nonius_test', password: 'local-release-password-only',
+    database: 'nonius_release_test', connectTimeout: 10000
+  });
+}
+async function stats(db) {
+  const [[tx]] = await db.query('SELECT COUNT(*) AS n FROM transactions');
+  const [[audit]] = await db.query('SELECT COUNT(*) AS n FROM audit');
+  const [[migrations]] = await db.query('SELECT COUNT(*) AS n FROM schema_migrations');
+  const [triggers] = await db.query('SHOW TRIGGERS');
+  const [checked] = await db.query("SELECT id, checked_snapshot_hash FROM transactions WHERE status='checked' ORDER BY created_at ASC LIMIT 1");
+  return {
+    transactions: Number(tx.n), audit: Number(audit.n), migrations: Number(migrations.n),
+    triggers: triggers.length,
+    checked_id: checked?.[0]?.id || '',
+    checked_hash: checked?.[0]?.checked_snapshot_hash || ''
+  };
+}
+async function main() {
+  const report = {
+    status:'failed', environment:'disposable-local-docker-only',
+    source_commit:'adf3fb4bdce027f65c2a18de2ca4d94e8424e35f',
+    version:VERSION, candidate_sha256:EXPECTED_SHA,
+    production_approval:'PENDING',
+    staged_existing_live_database:false
+  };
+  fs.mkdirSync(OUT, {recursive:true});
+  const zip = fs.readFileSync(CANDIDATE);
+  check(crypto.createHash('sha256').update(zip).digest('hex') === EXPECTED_SHA,
+    'Candidate ZIP differs from verified local/CI source. Stop.');
+  const db = await connect();
+  const browser = await chromium.launch({headless:true});
+  try {
+    report.before = await stats(db);
+    check(report.before.transactions >= 10003 && report.before.triggers >= 15,
+      'Fresh synthetic installed data not prepared; do not run updater.');
+    const page = await browser.newPage({acceptDownloads:true});
+    await page.goto(BASE + '/login.php');
+    await page.locator('input[name="identifier"]').fill('release_owner');
+    await page.locator('input[name="password"]').fill('LocalOwnerPassword!12345');
+    await page.getByRole('button', {name:'Sign in'}).click();
+    await page.waitForURL(/(?:index|first-login)\.php/, {timeout:20000});
+    const boot = await page.request.get(BASE + '/api.php?scope=bootstrap');
+    check(boot.status() === 200, 'Owner bootstrap failed before update');
+    const state = await boot.json();
+    check(state.actor?.role === 'project_owner' && !!state.csrf, 'Owner authentication or CSRF missing');
+    const headers = {'X-CSRF-Token':state.csrf};
+    const disallowed = await page.request.post(BASE + '/update.php', {
+      data:{action:'install',confirmed:true,review_token:'unreviewed'}, headers
+    });
+    check(disallowed.status() >= 400, 'Update permitted without prior review and consent');
+    const review = await page.request.post(BASE + '/update.php', {
+      data:{action:'review',filename:'noniuswtax-rc.zip',data_base64:zip.toString('base64')},
+      headers, timeout:90000
+    });
+    const reviewed = await review.json();
+    check(review.status() === 200 && reviewed.ok === true,
+      'Updater review failed: HTTP '+review.status()+' '+JSON.stringify(reviewed));
+    check(reviewed.details.version === VERSION
+      && reviewed.details.current_version === '0.4.56'
+      && reviewed.details.sha256 === EXPECTED_SHA
+      && reviewed.details.file_count === 27,
+      'Updater review version, SHA, or inventory did not match');
+    report.updater_review = {status:'passed', version:reviewed.details.version,
+      file_count:reviewed.details.file_count, sha256:reviewed.details.sha256};
+    const install = await page.request.post(BASE + '/update.php', {
+      data:{action:'install',review_token:reviewed.review_token,confirmed:true},
+      headers, timeout:180000
+    });
+    const result = await install.json();
+    check(install.status() === 200 && result.ok === true,
+      'Updater installation failed: HTTP '+install.status()+' '+JSON.stringify(result));
+    check(result.from === '0.4.56' && result.to === VERSION,
+      'Updater version transition mismatch');
+    check(result.database_backup_verified?.triggers >= 15,
+      'Updater database snapshot did not include expected triggers');
+    check(/^before-0\.4\.57-rc\.1-.+\.zip$/.test(result.backup || ''),
+      'Updater code backup missing');
+    check(/^before-0\.4\.57-rc\.1-.+-db\.sql$/.test(result.database_backup || ''),
+      'Updater database backup missing');
+    report.install = {
+      status:'passed', from:result.from, to:result.to,
+      backup:result.backup, database_backup:result.database_backup,
+      database_backup_tables:result.database_backup_verified.tables,
+      database_backup_triggers:result.database_backup_verified.triggers
+    };
+    const mainPage = await page.goto(BASE + '/index.php');
+    check(mainPage.status() === 200, 'New candidate homepage failed to load');
+    check(await page.locator('link[href*="style.css?v=0.4.57-rc.1"]').count() >= 1,
+      'Candidate runtime did not expose updated version');
+    report.after = await stats(db);
+    check(report.after.transactions === report.before.transactions,
+      'Transaction rows changed during the staging update');
+    check(report.after.triggers === report.before.triggers,
+      'Triggers changed unexpectedly during the staging update');
+    check(report.after.audit >= report.before.audit,
+      'Audit history was lost during the update');
+    check(report.after.checked_hash === report.before.checked_hash,
+      'Checked transaction hash changed during staging update');
+    report.status = 'passed';
+    console.log('PASS: exact ZIP reviewed, installed via real updater, '+report.before.transactions+
+      ' transactions retained and '+report.after.triggers+' database triggers intact.');
+  } catch (e) {
+    report.error = String(e?.message || e);
+    console.error('FAIL candidate staging upgrade: ' + report.error);
+    throw e;
+  } finally {
+    fs.writeFileSync(EVIDENCE, JSON.stringify(report,null,2));
+    await db.end();
+    await browser.close();
+  }
+}
+main().catch(()=>process.exitCode=1);
