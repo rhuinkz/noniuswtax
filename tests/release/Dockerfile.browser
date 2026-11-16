@@ -1,0 +1,12 @@
+# Official Playwright image; exact package version must match the browser image.
+FROM mcr.microsoft.com/playwright:v1.65.1-noble
+WORKDIR /suite
+COPY tests/release/package.json ./package.json
+RUN npm install --no-audit --no-fund --ignore-scripts
+COPY tests/release/playwright.config.cjs ./playwright.config.cjs
+COPY tests/release/specs ./specs
+COPY assets/app.js ./assets/app.js
+COPY assets/login-slideshow.js ./assets/login-slideshow.js
+COPY assets/bir2307-v1.pdf ./assets/bir2307-v1.pdf
+RUN mkdir -p /suite/output
+CMD ["sh", "-ec", "node --check /suite/assets/app.js && node --check /suite/assets/login-slideshow.js && npx playwright test --config /suite/playwright.config.cjs"]
