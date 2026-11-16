@@ -1,0 +1,10 @@
+{
+  "name": "nonius-release-verification",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Disposable local browser, database, permission and deployment smoke suite",
+  "dependencies": {
+    "@playwright/test": "1.65.1",
+    "mysql2": "3.15.3"
+  }
+}
