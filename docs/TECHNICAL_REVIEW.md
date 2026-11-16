@@ -33,3 +33,11 @@
 3. Obtain accounting/tax approval and add tests across tax scenarios.
 4. Test every role and direct-API denial path, period integrity, checked-edit and cancellation history.
 5. Establish signed update policy, controlled change approvals, monitoring, retention and recovery.
+
+
+### Additional GitHub review-branch work (not deployed)
+- Added `037_checked_hash_period_guard` to reject hash-only edits when the transaction's month is closed; **not database-tested yet**.
+- Owner-only SQL diagnostics now use a stricter query guard and read-only DB transaction. This does not replace a least-privilege database account.
+- Apache rules explicitly deny web access to Git internals, tests, documentation, and `config.*.php`/environment files. Real HTTP denial tests are still necessary.
+- CI now runs security/policy and SQL diagnostic tests, including checks that confidential backup and configuration files are not Git-tracked.
+- The destructive reset feature was removed from this sanitized branch, **not from a currently deployed instance**.
