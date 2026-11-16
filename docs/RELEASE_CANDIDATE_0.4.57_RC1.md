@@ -63,6 +63,12 @@ The owner ran `Test-StagingCandidate.ps1` against the exact approved-for-staging
 
 This first attempt is a **FAIL for the integrated staging rehearsal**, not proof that the actual code install or database integrity failed. The candidate script now also inspects the anonymous login page's current version and the authenticated `window.NONIUS.version` value, diagnoses unexpected redirection and permits a required post-update re-login. A new run is needed before the candidate upgrade/rollback can be considered verified. The candidate ZIP and checksum remain **unchanged**.
 
+### Follow-up staging failure: stale v0.4.56 seen on an anonymous page
+
+The next owner-provided Docker log again shows **12/12 Playwright tests passed** and a successful updater API response, but an independent unauthenticated HTTP request to `/login.php` returned `200` and the old asset version **`assets/style.css?v=0.4.56`**. Thus the issue cannot be attributed solely to an authenticated dashboard redirect. The entire isolated rehearsal remains **FAIL**, with rollback untested.
+
+The latest staging diagnostic now (1) probes the anonymous PHP-rendered version for up to approximately 30 seconds with separate requests and cache-busting query strings, preserving each response; and (2) uses the **disposable container only** to read the installed `lib/bootstrap.php` directly and compare it with `nonius-update.json`. If the new version is present on disk but not visible immediately, PHP opcode/cache timing is a possible explanation. If the file remains old on disk, the updater or deployment filesystem must be repaired before considering release. Both cases still block approval until resolved and full rollback has passed. The ZIP SHA-256 is unchanged.
+
 ## 3. Scope of security changes
 
 - Removed the destructive `resetTestData` branch from reviewed source; **previously deployed versions may still have it** (Issue #3).
