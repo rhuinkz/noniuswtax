@@ -55,3 +55,16 @@ powershell -ExecutionPolicy Bypass -File .\scripts\Build-ReleaseCandidate.ps1
 This builds an **unapproved** `0.4.57-rc.1` ZIP from the exact tested source commit, changes only the version/changelog inside the package, and verifies the ZIP and its per-file SHA-256 manifest. Outputs are local under ignored `release-out/`; **do not feed them into a live updater**.
 
 Review the [candidate dossier](docs/RELEASE_CANDIDATE_0.4.57_RC1.md), [staging/rollback runbook](docs/PRODUCTION_DEPLOYMENT_RUNBOOK.md), [BIR/finance approval record](docs/FINANCE_BIR_SIGNOFF.md) and [formal go/no-go signoffs](docs/RELEASE_APPROVAL_RECORD.md). All production approvals remain **PENDING**. The original v0.4.56 README review limitations above are historical; consult the latest release acceptance gate for verified 2026-11-16 automated results.
+
+
+### Disposable staging rehearsal of the exact candidate ZIP
+
+Once the exact staging ZIP exists in `release-out/`, you can verify the application's **real updater review, install and rollback using synthetic data**, without touching Hostinger:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\Test-StagingCandidate.ps1
+```
+
+This creates an isolated Docker project named `nonius-rc-staging`, reruns the 12 browser tests to populate the disposable database, installs the SHA-256-verified candidate ZIP via the two-step owner updater, restores the updater's original code and pre-update database backup, then verifies the restored records, triggers, audit history and login. It writes `staging-results/staging-summary.json` and cleans up its own containers/volumes.
+
+**This new rehearsal has not yet been run on the owner's computer.** Even when successful, it is not a substitute for a controlled upgrade and rollback against a sanitized snapshot of the actual currently deployed database.
