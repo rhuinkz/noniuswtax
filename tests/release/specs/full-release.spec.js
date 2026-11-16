@@ -182,7 +182,7 @@ test('05 synthetic transactions are locked by month and protected by DB triggers
       );
     }
     await db.execute(
-      'INSERT INTO suppliers(id,name,tin,data,active,version) VALUES(?,?,?,?,?)',
+      'INSERT INTO suppliers(id,name,tin,data,active,version) VALUES(?,?,?,?,?,?)',
       [SUPPLIER, 'Synthetic Supplier', '00000000000000', JSON.stringify({ id: SUPPLIER, name: 'Synthetic Supplier' }), 1, 1]
     );
     for (const school of [SCHOOL_A, SCHOOL_B]) {
