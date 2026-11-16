@@ -5,6 +5,7 @@
   "description": "Disposable local browser, database, permission and deployment smoke suite",
   "dependencies": {
     "@playwright/test": "1.65.1",
-    "mysql2": "3.24.4"
+    "mysql2": "3.24.4",
+    "pdf-lib": "1.17.1"
   }
 }
