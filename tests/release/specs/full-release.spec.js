@@ -66,6 +66,11 @@ async function mustFailSql(connection, sql, params, label) {
 }
 
 test.describe.configure({ mode: 'serial' });
+// Keep core browser tests usable offline; BIR PDF rendering still requires its
+// separately approved asset/dependency check before production deployment.
+test.beforeEach(async ({ page }) => {
+  await page.route('https://cdnjs.cloudflare.com/**', route => route.abort());
+});
 
 test('01 fresh local installer creates the application with synthetic credentials', async ({ page }) => {
   let loaded = false;
