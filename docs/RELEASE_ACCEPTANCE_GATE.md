@@ -36,6 +36,12 @@ A local Windows Docker test of review-branch commit `12686f0dd4a93484f32e2e31344
 
 **Decision: automated synthetic local smoke gate PASS; production release remains NOT APPROVED.**
 
+## Expanded single-command verification (new candidate — awaiting local execution)
+
+The previous 10/10 Playwright smoke result (2026-11-16, commit `12686f0dd4a93484f32e2e3134496edad9d3382e`) remains recorded below. A newer package now combines **tax arithmetic golden cases, actual application Form 2307 PDF generation with PNG visual-review artifact, 10,000 synthetic transactions with 30-request latency sample, and full disposable SQL backup/restore with trigger tamper checks** with the earlier smoke tests.
+
+When a fresh local run completes, the single `test-results/release-report.html` and `release-summary.json` provide automated PASS/FAIL evidence. **The newly expanded suite has not yet been run on the owner's Windows Docker installation.** Keep its technical gate PENDING until that run, and keep the independent BIR/printed form, migration of an existing installation, Hostinger security, target-capacity and authorized release gates PENDING regardless of the automated result.
+
 ## Release evidence template
 
 - Candidate version and Git commit:
