@@ -43,7 +43,7 @@ try {
         foreach ($entry in $zip.Entries) {
             if ([string]::IsNullOrEmpty($entry.Name)) { continue }
             $name = [string]$entry.FullName
-            if (!PayloadAllowed $name) { continue }
+            if (-not (PayloadAllowed $name)) { continue }
             if ($payload.ContainsKey($name)) { throw "Duplicate source payload path: $name" }
             $payload[$name] = ReadZipBytes $entry
         }
