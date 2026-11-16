@@ -30,5 +30,10 @@ jobs:
           sed 's/$/\r/' tests/release/backup-restore.sh > "$tmp"
           tr -d '\015' < "$tmp" | bash -n
           rm "$tmp"
+      - name: Validate staging rehearsal shell and Compose overlays (no containers started)
+        shell: bash
+        run: |
+          bash -n tests/release/candidate-restore-db.sh
+          docker compose -f compose.release-test.yml -f compose.staging-candidate.yml config --quiet
       - name: Check JS syntax
         run: node --check assets/app.js && node --check assets/login-slideshow.js && node --check tests/release/specs/full-release.spec.js && node --check tests/release/playwright.config.cjs && node --check tests/release/report.cjs
