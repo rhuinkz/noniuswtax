@@ -99,31 +99,47 @@ async function main() {
       database_backup_tables:result.database_backup_verified.tables,
       database_backup_triggers:result.database_backup_verified.triggers
     };
-    // Check the installed version independently of the owner session.
-    // Login serves the current PHP APP_VERSION even to anonymous visitors.
-    const anonymous = await browser.newContext();
-    try {
-      const probe = await anonymous.request.get(BASE + '/login.php', {
-        maxRedirects: 0, timeout: 20000
-      });
-      const html = await probe.text();
-      const versionedAsset = 'assets/style.css?v=' + VERSION;
-      const cssRefs = html.split('href="').slice(1)
-        .map(part => part.split('"')[0])
-        .filter(href => href.includes('style.css')).slice(0, 3);
-      report.unauthenticated_runtime_probe = {
-        status: probe.status(), url: probe.url(),
-        expected_asset: versionedAsset,
-        observed_css: cssRefs,
-        matched: html.includes(versionedAsset)
-      };
-      check(probe.status() === 200 && html.includes(versionedAsset),
-        'Updated runtime not visible in anonymous login page: HTTP ' +
-        probe.status() + ', expected ' + versionedAsset +
-        ', observed CSS ' + JSON.stringify(cssRefs));
-    } finally {
-      await anonymous.close();
+    // The updater responds before a separate Apache request has necessarily
+    // refreshed its compiled PHP scripts (e.g., enabled OPcache validation).
+    // Poll briefly; never hide a persistent stale-version or failed install.
+    // Use a NEW anonymous context and cache-busting URL for each sample.
+    const versionedAsset = 'assets/style.css?v=' + VERSION;
+    const samples = [];
+    let confirmed = false;
+    for (let attempt = 0; attempt < 16; attempt++) {
+      if (attempt > 0) await new Promise(resolve => setTimeout(resolve, 2000));
+      const anonymous = await browser.newContext();
+      try {
+        const probe = await anonymous.request.get(
+          BASE + '/login.php?staging_version_probe=' + attempt + '-' + Date.now(),
+          {maxRedirects: 0, timeout: 15000, headers:{'Cache-Control':'no-cache'}}
+        );
+        const html = await probe.text();
+        const cssRefs = html.split('href="').slice(1)
+          .map(part => part.split('"')[0])
+          .filter(href => href.includes('style.css')).slice(0, 3);
+        const match = probe.status() === 200 && html.includes(versionedAsset);
+        samples.push({
+          attempt:attempt + 1, http_status:probe.status(),
+          observed_css:cssRefs, version_matched:match
+        });
+        if (match) { confirmed = true; break; }
+      } finally {
+        await anonymous.close();
+      }
     }
+    report.unauthenticated_runtime_probe = {
+      expected_asset:versionedAsset,
+      matched:confirmed,
+      attempts:samples.length,
+      observations:samples
+    };
+    check(confirmed,
+      'Candidate runtime stayed stale after bounded HTTP refresh probes; ' +
+      'expected ' + versionedAsset + ', last response ' +
+      JSON.stringify(samples[samples.length - 1]) +
+      '. Review staging-results/candidate-runtime-diagnostic.json ' +
+      'for the installed on-disk file version.');
     // Following a 302 to login returns HTTP 200 too; explicitly check the URL.
     let mainPage = await page.goto(BASE + '/index.php', {waitUntil:'domcontentloaded'});
     report.post_install_navigation = {
