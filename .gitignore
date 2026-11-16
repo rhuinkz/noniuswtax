@@ -29,3 +29,8 @@ Thumbs.db
 
 # Local release suite reports and transient artifacts
 /test-results/
+
+# Generated release candidates and evidence are local-only; never commit archives.
+/release-out/
+
+/staging-results/

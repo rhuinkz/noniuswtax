@@ -24,3 +24,7 @@ vendor
 *.7z
 *.rar
 INSTALL_KEY.txt
+
+# Candidate rehearsal produces local synthetic evidence only.
+staging-results
+release-out

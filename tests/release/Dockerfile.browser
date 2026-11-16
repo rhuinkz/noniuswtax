@@ -6,6 +6,8 @@ COPY tests/release/package.json ./package.json
 RUN npm install --no-audit --no-fund --ignore-scripts
 COPY tests/release/playwright.config.cjs ./playwright.config.cjs
 COPY tests/release/report.cjs ./report.cjs
+COPY tests/release/candidate-upgrade.cjs ./candidate-upgrade.cjs
+COPY tests/release/candidate-rollback.cjs ./candidate-rollback.cjs
 COPY tests/release/specs ./specs
 COPY assets/app.js ./assets/app.js
 COPY assets/login-slideshow.js ./assets/login-slideshow.js

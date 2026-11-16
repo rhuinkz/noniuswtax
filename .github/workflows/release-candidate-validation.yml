@@ -1,0 +1,38 @@
+name: Release candidate build verification (NO DEPLOY)
+on:
+  push:
+    branches:
+      - 'release/**'
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-staging-only-release-candidate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Build pinned source candidate via PowerShell 5.1
+        shell: powershell
+        run: |
+          .\scripts\Build-ReleaseCandidate.ps1
+      - name: Check staged browser test JavaScript syntax
+        shell: pwsh
+        run: |
+          node --check tests/release/candidate-upgrade.cjs
+          node --check tests/release/candidate-rollback.cjs
+      - name: Independently verify manifest, version and checksums
+        shell: powershell
+        run: |
+          .\scripts\Verify-ReleaseCandidate.ps1 -PackagePath .\release-out\noniuswtax-0.4.57-rc.1-STAGING-ONLY-adf3fb4.zip
+      - name: Confirm no production package approval or uploaded artifact
+        shell: powershell
+        run: |
+          $record = Get-Content .\release-out\release-provenance.json -Raw | ConvertFrom-Json
+          if ($record.status -ne 'NOT_APPROVED_FOR_PRODUCTION') { throw 'Release must remain unapproved.' }
+          if ($record.independently_signed -ne $false) { throw 'Do not falsely claim signature.' }
+          if ($record.approved_production_deployment -ne $false) { throw 'Not approved to deploy.' }
+          Write-Host 'PASS candidate packaging integrity; artifact intentionally NOT published or deployed.'
