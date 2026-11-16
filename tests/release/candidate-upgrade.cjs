@@ -99,10 +99,55 @@ async function main() {
       database_backup_tables:result.database_backup_verified.tables,
       database_backup_triggers:result.database_backup_verified.triggers
     };
-    const mainPage = await page.goto(BASE + '/index.php');
-    check(mainPage.status() === 200, 'New candidate homepage failed to load');
-    check(await page.locator('link[href*="style.css?v=0.4.57-rc.1"]').count() >= 1,
-      'Candidate runtime did not expose updated version');
+    // Check the installed version independently of the owner session.
+    // Login serves the current PHP APP_VERSION even to anonymous visitors.
+    const anonymous = await browser.newContext();
+    try {
+      const probe = await anonymous.request.get(BASE + '/login.php', {
+        maxRedirects: 0, timeout: 20000
+      });
+      const html = await probe.text();
+      const versionedAsset = 'assets/style.css?v=' + VERSION;
+      const cssRefs = html.split('href="').slice(1)
+        .map(part => part.split('"')[0])
+        .filter(href => href.includes('style.css')).slice(0, 3);
+      report.unauthenticated_runtime_probe = {
+        status: probe.status(), url: probe.url(),
+        expected_asset: versionedAsset,
+        observed_css: cssRefs,
+        matched: html.includes(versionedAsset)
+      };
+      check(probe.status() === 200 && html.includes(versionedAsset),
+        'Updated runtime not visible in anonymous login page: HTTP ' +
+        probe.status() + ', expected ' + versionedAsset +
+        ', observed CSS ' + JSON.stringify(cssRefs));
+    } finally {
+      await anonymous.close();
+    }
+    // Following a 302 to login returns HTTP 200 too; explicitly check the URL.
+    let mainPage = await page.goto(BASE + '/index.php', {waitUntil:'domcontentloaded'});
+    report.post_install_navigation = {
+      status: mainPage?.status() ?? null, url: page.url(), reauthenticated: false
+    };
+    if (new URL(page.url()).pathname === '/login.php') {
+      report.post_install_navigation.reauthenticated = true;
+      await page.locator('input[name="identifier"]').fill('release_owner');
+      await page.locator('input[name="password"]').fill('LocalOwnerPassword!12345');
+      await page.getByRole('button', {name:'Sign in'}).click();
+      await page.waitForURL(url =>
+        ['/index.php','/first-login.php'].includes(url.pathname), {timeout:20000});
+      mainPage = await page.goto(BASE + '/index.php', {waitUntil:'domcontentloaded'});
+      report.post_install_navigation.after_relogin_url = page.url();
+    }
+    check(mainPage && mainPage.status() === 200 &&
+      new URL(page.url()).pathname === '/index.php',
+      'Authenticated candidate dashboard is unavailable: ' +
+      (mainPage?.status() ?? 'no response') + ' ' + page.url());
+    const renderedVersion = await page.evaluate(() => window.NONIUS?.version ?? null);
+    report.authenticated_runtime_version = renderedVersion;
+    check(renderedVersion === VERSION,
+      'Candidate runtime version mismatch: expected ' + VERSION +
+      ', observed ' + JSON.stringify(renderedVersion) + ', URL ' + page.url());
     report.after = await stats(db);
     check(report.after.transactions === report.before.transactions,
       'Transaction rows changed during the staging update');
