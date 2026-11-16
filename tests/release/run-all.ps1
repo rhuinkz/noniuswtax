@@ -19,7 +19,7 @@ try {
     Run-Docker ($baseArgs + @('build', 'web', 'browser'))
     Run-Docker ($baseArgs + @('up', '-d', '--wait', 'db', 'web'))
     Write-Host 'Running source PHP lint and security/calculation smoke tests...' -ForegroundColor Cyan
-    $smoke = 'find /var/www/html -type f -name "*.php" -print0 | xargs -0 -n1 php -l && php tests/calculation-smoke.php && php tests/safety-smoke.php && php tests/sql-guard-smoke.php'
+    $smoke = 'php tests/release/php-lint.php && php tests/calculation-smoke.php && php tests/safety-smoke.php && php tests/sql-guard-smoke.php'
     Run-Docker ($baseArgs + @('run', '--rm', '--no-deps', 'web', 'sh', '-ec', $smoke))
     Write-Host 'Running combined Playwright, permissions, migration, DB and HTTP tests...' -ForegroundColor Cyan
     Run-Docker ($baseArgs + @('run', '--rm', 'browser'))
