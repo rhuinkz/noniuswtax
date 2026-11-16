@@ -18,7 +18,7 @@
 
 The complete local automated Docker suite was reported **PASS** for the pinned commit: **12/12 Playwright tests**, 13 synthetic arithmetic cases, 10,003 transaction records restored, 15 database triggers restored and 10,000-record/30-request local probe (p95 4,011 ms). See `docs/RELEASE_ACCEPTANCE_GATE.md`.
 
-This evidence covers the *tested source commit*. The candidate builder modifies **only** the runtime version declaration and changelog in its output artifact, then generates SHA-256 checksums and an in-app updater manifest. **The candidate ZIP and updater installation path have not yet been independently tested.** Further staging and finance review are required before approval.
+This evidence covers the *tested source commit*. The candidate builder changes only the runtime version declaration and changelog in its output artifact and generates SHA-256 checksums and an in-app updater manifest. The exact candidate ZIP has now been built and verified locally, and its **disposable synthetic updater plus rollback rehearsal passed on 2026-11-16** (see the latest evidence entry). The candidate has not been tested against an anonymized clone of the historical deployed database; finance, security and formal approval remain pending.
 
 ## 2. Build and verify the candidate on Windows
 
@@ -69,6 +69,25 @@ The next owner-provided Docker log again shows **12/12 Playwright tests passed**
 
 The latest staging diagnostic now (1) probes the anonymous PHP-rendered version for up to approximately 30 seconds with separate requests and cache-busting query strings, preserving each response; and (2) uses the **disposable container only** to read the installed `lib/bootstrap.php` directly and compare it with `nonius-update.json`. If the new version is present on disk but not visible immediately, PHP opcode/cache timing is a possible explanation. If the file remains old on disk, the updater or deployment filesystem must be repaired before considering release. Both cases still block approval until resolved and full rollback has passed. The ZIP SHA-256 is unchanged.
 
+### Verified full synthetic staging upgrade and rollback — 2026-11-16
+
+The owner uploaded `staging-summary.json`, `staging-upgrade.json`, and `candidate-runtime-diagnostic.json` from a final disposable local rehearsal timestamped **2026-11-16T07:32:47.9919853Z**. The reported `rehearsal_status` is **PASS**.
+
+| Automated check | Reported evidence |
+|---|---|
+| Exact ZIP identity | `v0.4.57-rc.1`, SHA-256 `e8d1fe062073f81d68bd0c2707951a0dcae1543a8d5c1aa0dd074a1e5ccb367a`, source commit `adf3fb4bdce027f65c2a18de2ca4d94e8424e35f` |
+| Fresh synthetic installation & browser checks | **12/12 PASS**, 0 failed, 0 skipped |
+| Real two-step in-app updater | **PASS**, 27 files reviewed; `0.4.56` → `0.4.57-rc.1` |
+| Updater backups | Code ZIP and SQL backup produced; SQL metadata: **21 tables, 15 triggers** |
+| Installed disk + runtime version | `lib/bootstrap.php` and updater manifest both `0.4.57-rc.1`; authenticated runtime also `0.4.57-rc.1` |
+| Synthetic record preservation | **10,003 → 10,003 transactions**, **37 → 37 migrations**, **15 → 15 triggers**, checked certificate hash unchanged |
+| Audit | **6 → 7** events, accounting for updater event; no deleted history reported |
+| Restore and independent post-rollback check | `staging-summary.json` flags **code restoration, SQL restoration, and independent post-rollback verification all true** |
+
+**Version visibility:** anonymous login initially served the previous asset version `0.4.56` in probes 1 and 2, then correctly served `0.4.57-rc.1` in probe 3. Diagnostic CLI configuration showed `opcache.validate_timestamps=1` and `opcache.revalidate_freq=2`. This is **consistent with temporary PHP opcode cache revalidation**, but does not establish server-side Apache configuration or prove the precise cause. The definitive observation is that installed files and subsequent runtime agreed on the candidate version.
+
+**Decision: synthetic local candidate review/install and full rollback rehearsal PASS.** The report explicitly says `actual_existing_installation_clone_tested=false` and `production_approval=PENDING`. This is **not** approval to update the deployed Hostinger app; a sanitized clone of the actual installed database, BIR/form validation, external security and load testing, backup recovery and authorized sign-offs remain mandatory.
+
 ## 3. Scope of security changes
 
 - Removed the destructive `resetTestData` branch from reviewed source; **previously deployed versions may still have it** (Issue #3).
@@ -83,8 +102,9 @@ The latest staging diagnostic now (1) probes the anonymous PHP-rendered version 
 | Gate | Evidence required | Status |
 |---|---|---|
 | Automated source and synthetic integration | 2026-11-16 full Docker evidence tied to pinned commit | **PASS** |
-| Generated candidate ZIP | Local build output, SHA-256 validation, archive inventory review | **PENDING BUILD** |
-| Candidate upgrade/rollback | Upgrade an existing `0.4.56` *sanitized staging copy* using exact candidate ZIP; verify migrations, session/roles, records, backups and rollback | **PENDING** |
+| Generated candidate ZIP | Local and independent CI builds matched SHA-256; 27 file hashes | **AUTOMATED PASS; release-signing review pending** |
+| Disposable synthetic candidate upgrade/rollback | Verified 12/12 tests, two-step update, 10,003 records, backups, code/DB rollback | **AUTOMATED PASS (2026-11-16)** |
+| Realistic installed-system upgrade/rollback | Upgrade and restore separately sanitized clone of the **actual deployed** v0.4.56 code and historical DB | **PENDING** |
 | Financial rules | Approved ATC/rate/effective-date matrix and separately computed centavo fixtures | **PENDING** |
 | BIR 2307 | Authorized reviewer signs off generated/printed form and field alignment for representative cases | **PENDING** |
 | Live hosting security | External HTTP 403/404 checks, PHP permissions, HTTPS, secrets, WAF, logging | **PENDING** |
