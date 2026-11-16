@@ -8,8 +8,8 @@
 |---|---|
 | Candidate version | 0.4.57-rc.1 (staging-only) |
 | Verified source commit | `adf3fb4bdce027f65c2a18de2ca4d94e8424e35f` |
-| Candidate ZIP filename | __________________________________ |
-| Candidate ZIP SHA-256 | __________________________________ |
+| Candidate ZIP filename | `noniuswtax-0.4.57-rc.1-STAGING-ONLY-adf3fb4.zip` (owner's local output; not published) |
+| Candidate ZIP SHA-256 | `e8d1fe062073f81d68bd0c2707951a0dcae1543a8d5c1aa0dd074a1e5ccb367a` |
 | Independently verified provenance/signer | __________________________________ |
 | Proposed Hostinger website (private record) | __________________________________ |
 | Currently deployed app version and corresponding files/DB | __________________________________ |
@@ -21,7 +21,8 @@
 | Gate / document | Responsible reviewer | Evidence ID and date | Decision |
 |---|---|---|---|
 | Source commit and full synthetic 12/12 test suite | Technical reviewer | 2026-11-16 JSON test report; checksum/commit linkage confirmed | **AUTOMATED PASS; independent reviewer PENDING** |
-| Candidate ZIP archive + SHA-256 + manifest | Release engineer | — | **PENDING** |
+| Candidate ZIP archive + SHA-256 + manifest | Release engineer | 2026-11-16 owner build + matching Windows CI; 27 file SHA-256 checks | **AUTOMATED PASS; reviewer/signature PENDING** |
+| Disposable synthetic update/rollback rehearsal | Technical reviewer | 2026-11-16 uploaded `staging-summary.json`: PASS; 12/12 tests, 10,003 transactions, 15 triggers, code and DB restoration flagged passed | **AUTOMATED PASS; reviewer PENDING** |
 | Upgrade on real-world-representative sanitized staging clone | Database/release administrator | — | **PENDING** |
 | Downgrade/rollback rehearsal with restored triggers | Database/release administrator | — | **PENDING** |
 | VAT/EWT/ATC rule and effective-date validation | Authorized finance / tax representative | — | **PENDING** |
@@ -33,6 +34,12 @@
 | Final production installation authorization | Project Owner / authorized organizational signatory | — | **PENDING** |
 
 **No gate may be marked PASS merely because the 12/12 synthetic Playwright suite passed.** The local 30-request p95 of approximately 4.0 seconds is *informational*, not acceptance at a target concurrent-user count. Independently confirmed BIR rules and real hosting checks are required.
+
+### Recorded local candidate test evidence — 2026-11-16
+
+Owner-provided files report successful synthetic upgrade/rollback against candidate SHA-256 `e8d1fe062073f81d68bd0c2707951a0dcae1543a8d5c1aa0dd074a1e5ccb367a`. The source was a **newly installed disposable synthetic environment**, not a historical data clone. Its rollback was automatically verified, but the independent authorized recovery sign-off remains blank. The version was temporarily stale in two anonymous requests, then updated on the third; this is consistent with opcode caching and warrants post-update monitoring in staging.
+
+`staging-summary.json` timestamp: `2026-11-16T07:32:47.9919853Z`. Evidence records are held by the owner and must be archived privately. **No signature or production approval was given by this automated test.**
 
 ## Reviewer declarations
 
