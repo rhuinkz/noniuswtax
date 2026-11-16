@@ -1,0 +1,201 @@
+{
+  "description": "Independent decimal arithmetic mechanical fixtures; NOT approved BIR policy",
+  "review_status": "PENDING_FINANCE_SIGNOFF",
+  "cases": [
+    {
+      "name": "vat_whole",
+      "gross": "112.00",
+      "vat": true,
+      "business_percent": 5,
+      "ewt_percent": 1,
+      "expected": {
+        "gross": 11200,
+        "base": 10000,
+        "business": 500,
+        "ewt": 100,
+        "total": 600,
+        "net": 10600
+      }
+    },
+    {
+      "name": "vat_fractional_gross",
+      "gross": "100.01",
+      "vat": true,
+      "business_percent": 5,
+      "ewt_percent": 2,
+      "expected": {
+        "gross": 10001,
+        "base": 8929,
+        "business": 446,
+        "ewt": 179,
+        "total": 625,
+        "net": 9376
+      }
+    },
+    {
+      "name": "nonvat_zero_business",
+      "gross": "100.00",
+      "vat": false,
+      "business_percent": 0,
+      "ewt_percent": 2,
+      "expected": {
+        "gross": 10000,
+        "base": 10000,
+        "business": 0,
+        "ewt": 200,
+        "total": 200,
+        "net": 9800
+      }
+    },
+    {
+      "name": "vat_cent_minimum",
+      "gross": "0.01",
+      "vat": true,
+      "business_percent": 0,
+      "ewt_percent": 0,
+      "expected": {
+        "gross": 1,
+        "base": 1,
+        "business": 0,
+        "ewt": 0,
+        "total": 0,
+        "net": 1
+      }
+    },
+    {
+      "name": "vat_two_cent",
+      "gross": "0.02",
+      "vat": true,
+      "business_percent": 5,
+      "ewt_percent": 1,
+      "expected": {
+        "gross": 2,
+        "base": 2,
+        "business": 0,
+        "ewt": 0,
+        "total": 0,
+        "net": 2
+      }
+    },
+    {
+      "name": "nonvat_12345",
+      "gross": "12345.67",
+      "vat": false,
+      "business_percent": 3,
+      "ewt_percent": 5,
+      "expected": {
+        "gross": 1234567,
+        "base": 1234567,
+        "business": 37037,
+        "ewt": 61728,
+        "total": 98765,
+        "net": 1135802
+      }
+    },
+    {
+      "name": "vat_12345",
+      "gross": "12345.67",
+      "vat": true,
+      "business_percent": 5,
+      "ewt_percent": 3,
+      "expected": {
+        "gross": 1234567,
+        "base": 1102292,
+        "business": 55115,
+        "ewt": 33069,
+        "total": 88184,
+        "net": 1146383
+      }
+    },
+    {
+      "name": "vat_1000",
+      "gross": "1000.00",
+      "vat": true,
+      "business_percent": 12,
+      "ewt_percent": 1,
+      "expected": {
+        "gross": 100000,
+        "base": 89286,
+        "business": 10714,
+        "ewt": 893,
+        "total": 11607,
+        "net": 88393
+      }
+    },
+    {
+      "name": "nonvat_fractional_rates",
+      "gross": "2500.01",
+      "vat": false,
+      "business_percent": 0.5,
+      "ewt_percent": 1.5,
+      "expected": {
+        "gross": 250001,
+        "base": 250001,
+        "business": 1250,
+        "ewt": 3750,
+        "total": 5000,
+        "net": 245001
+      }
+    },
+    {
+      "name": "vat_fractional_rates",
+      "gross": "2500.01",
+      "vat": true,
+      "business_percent": 0.5,
+      "ewt_percent": 1.5,
+      "expected": {
+        "gross": 250001,
+        "base": 223215,
+        "business": 1116,
+        "ewt": 3348,
+        "total": 4464,
+        "net": 245537
+      }
+    },
+    {
+      "name": "nonvat_rounding",
+      "gross": "1.01",
+      "vat": false,
+      "business_percent": 0.5,
+      "ewt_percent": 1.5,
+      "expected": {
+        "gross": 101,
+        "base": 101,
+        "business": 1,
+        "ewt": 2,
+        "total": 3,
+        "net": 98
+      }
+    },
+    {
+      "name": "vat_odd_rounding",
+      "gross": "9.99",
+      "vat": true,
+      "business_percent": 7.5,
+      "ewt_percent": 2.5,
+      "expected": {
+        "gross": 999,
+        "base": 892,
+        "business": 67,
+        "ewt": 22,
+        "total": 89,
+        "net": 910
+      }
+    },
+    {
+      "name": "nonvat_rates",
+      "gross": "500.00",
+      "vat": false,
+      "business_percent": 8,
+      "ewt_percent": 4,
+      "expected": {
+        "gross": 50000,
+        "base": 50000,
+        "business": 4000,
+        "ewt": 2000,
+        "total": 6000,
+        "net": 44000
+      }
+    }
+  ]
+}

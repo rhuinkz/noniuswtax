@@ -1,0 +1,4 @@
+# Keep Unix shell scripts LF even when cloned on Windows.
+*.sh text eol=lf
+# PowerShell scripts are portable with Windows line endings.
+*.ps1 text eol=crlf

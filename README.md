@@ -36,3 +36,7 @@ Local PHP and JavaScript lint, the three-file update manifest hashes, and a smal
 
 ## Pending review-branch security fixes (not a production release)
 The source-review branch adds migration `037_checked_hash_period_guard` (closed-month certificate seal protection), a conservative read-only owner SQL diagnostic guard, stricter Apache file restrictions and additional CI checks. **Do not deploy or feed this GitHub branch into the in-app updater** as an ordinary release; the v0.4.56 manifest reflects the original release, and staging DB tests/tax approval are still pending.
+
+
+## One-command local release verification (Docker + Playwright)
+Use the disposable [Release Test Package](tests/release/README.md) to test this source with **one Windows PowerShell command**. It creates synthetic data, runs PHP/JS, database trigger, authorization and browser checks, exports reports, and removes its test database. A passing report **does not** authorize production deployment; see [Release Acceptance Gate](docs/RELEASE_ACCEPTANCE_GATE.md).

@@ -1,0 +1,66 @@
+# Disposable local release test environment. No live data, no paid cloud resources.
+name: nonius-release-verification
+
+services:
+  db:
+    image: mariadb:11.4
+    environment:
+      MARIADB_ROOT_PASSWORD: local-release-root-only
+      MARIADB_DATABASE: nonius_release_test
+      MARIADB_USER: nonius_test
+      MARIADB_PASSWORD: local-release-password-only
+    volumes:
+      - release-test-db:/var/lib/mysql
+      - ./tests/release:/suite-tests:ro
+      - ./test-results:/suite-output
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    networks: [testnet]
+    restart: "no"
+
+  web:
+    build:
+      context: .
+      dockerfile: tests/release/Dockerfile.app
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8877:80"
+    networks: [testnet]
+    restart: "no"
+
+  browser:
+    build:
+      context: .
+      dockerfile: tests/release/Dockerfile.browser
+    depends_on:
+      db:
+        condition: service_healthy
+      web:
+        condition: service_started
+    environment:
+      BASE_URL: http://web
+      DB_HOST: db
+      DB_PORT: "3306"
+      DB_NAME: nonius_release_test
+      DB_USER: nonius_test
+      DB_PASSWORD: local-release-password-only
+      CI: "1"
+    volumes:
+      - ./test-results:/suite/output
+    init: true
+    ipc: host
+    networks: [testnet]
+    restart: "no"
+
+volumes:
+  release-test-db: {}
+
+networks:
+  testnet:
+    internal: false
