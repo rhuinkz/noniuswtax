@@ -31,3 +31,7 @@ Generate independently approved expected figures for VAT and non-VAT suppliers, 
 
 ## CI recommendations
 Lint PHP and JavaScript; run calculation unit tests; launch isolated MariaDB/MySQL and apply migrations; run role, CSRF, period-lock and snapshot integration tests; add PDF fixture validation and a staging-only load test; block release for unresolved critical/high issues.
+
+
+## CI implemented on PR #2
+GitHub Actions checks PHP syntax, JavaScript syntax, calculation smoke cases, test-reset removal, diagnostic SQL allow/deny cases, and tracked-file policy. These are local/CI source checks, not integration tests. A staging MariaDB test must attempt a hash-only mutation against a **closed** month after migration 037 and verify rejection; repeat while open to verify intended permitted behavior. Do not run destructive tests on production data.
