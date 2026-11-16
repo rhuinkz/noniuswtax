@@ -464,3 +464,53 @@ test('11 simultaneous local dashboard reads complete and report response-time sa
   // This is a smoke check, NOT an approved capacity/load-test threshold.
   expect(timings.length).toBe(15);
 });
+
+
+test('12 synthetic 10,000-record registry and concurrent API read performance probe', async ({ page }) => {
+  test.setTimeout(240000);
+  const db = await database();
+  const total = 10000;
+  try {
+    for (let start = 0; start < total; start += 200) {
+      const params = [];
+      const batch = Math.min(200, total - start);
+      const tuples = Array.from({length: batch}, (_, k) => {
+        const n = String(start + k).padStart(6, '0');
+        params.push(
+          'synthetic-load-' + n, '2026-SYN-' + n, 'school',
+          SCHOOL_B, SUPPLIER, 'synthetic-actor', '2026-01-14',
+          10000 + start + k, AT
+        );
+        return '(?,?,?,?,?,?,?,?,?)';
+      });
+      await db.execute(
+        'INSERT INTO transactions(id,reference,transaction_scope,school_id,supplier_id,created_by,date,gross,created_at) VALUES ' + tuples.join(','),
+        params
+      );
+    }
+    const [rows] = await db.query("SELECT COUNT(*) AS total FROM transactions WHERE id LIKE 'synthetic-load-%'");
+    expect(Number(rows[0].total)).toBe(total);
+  } finally {
+    await db.end();
+  }
+  await signIn(page, OWNER_USER, OWNER_PASSWORD);
+  const requests = 30;
+  const timings = await Promise.all(Array.from({length: requests}, async () => {
+    const at = Date.now();
+    const response = await page.request.get(BASE + '/api.php?scope=transactions&per_page=25&page=1', { timeout: 90000 });
+    expect(response.status()).toBe(200);
+    const data = await response.json();
+    expect(data.pagination.total).toBeGreaterThanOrEqual(total);
+    return Date.now() - at;
+  }));
+  timings.sort((a, b) => a - b);
+  const p95 = timings[Math.ceil(timings.length * 0.95) - 1];
+  const evidence = {
+    synthetic_transaction_rows: total, concurrent_http_requests: requests,
+    p95_ms: p95, max_ms: timings.at(-1), min_ms: timings[0],
+    capacity_approved: false,
+    note: 'Single local browser session and small concurrency probe; NOT a 1000-employee production load certification.'
+  };
+  fs.writeFileSync('/suite/output/performance.json', JSON.stringify(evidence, null, 2));
+  console.log('Synthetic load: ' + total + ' records, ' + requests + ' parallel HTTP requests, p95=' + p95 + 'ms (informational only).');
+});
