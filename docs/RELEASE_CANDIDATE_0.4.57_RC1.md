@@ -43,6 +43,20 @@ powershell -ExecutionPolicy Bypass -File .\scripts\Verify-ReleaseCandidate.ps1 -
 
 **Notes:** This is not a cryptographically signed release. SHA-256 detects changes but does not establish trusted identity by itself. The recorded commit and locally generated ZIP must be reviewed independently; a release signer and approval procedure remain mandatory.
 
+## 2A. Synthetic local updater and rollback rehearsal (additional gate)
+
+After building/verifying the exact staging ZIP, a **separate disposable local Docker rehearsal** may be run from the same Windows repository:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\Test-StagingCandidate.ps1
+```
+
+This uses Docker Compose project **`nonius-rc-staging`**, a dedicated synthetic DB, and a named rollback-backup volume; it cannot connect to Hostinger or an actual production database. It runs the complete 12 Playwright tests to populate 10,003 synthetic transactions, uploads the exact SHA-256-pinned ZIP to the application's real two-stage updater, exercises the explicit review/confirmation flow, checks that files, transactions and triggers survive the update, then restores the updater's **own** pre-update code and SQL snapshot and rechecks counts, checked snapshot hash, audit history, login and version. It removes only its staging-specific Docker volumes afterward.
+
+Outputs are saved under `staging-results/` (separate from `test-results/`), including `staging-summary.json`, `staging-upgrade.json`, `staging-rollback.json`, and Playwright reports. The script fails closed if the candidate ZIP hash is wrong and reports partial/failed stages.
+
+**Caveat:** This rehearses the updater on a newly installed application filled with synthetic data. It does not establish compatibility with a previously deployed real-world database or its historical schema. An independently sanitized clone of the **actual installed** database and a recovery drill are still **required for production approval**. This local rehearsal script was newly added on the release preparation branch; **do not mark it PASS before its first actual Docker run.**
+
 ## 3. Scope of security changes
 
 - Removed the destructive `resetTestData` branch from reviewed source; **previously deployed versions may still have it** (Issue #3).
