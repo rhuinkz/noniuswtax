@@ -305,7 +305,104 @@ test('08 school user cannot read School B transactions or use administrator func
   expect(reset.status()).toBeGreaterThanOrEqual(400);
 });
 
-test('09 simultaneous local dashboard reads complete and report response-time samples', async ({ page }) => {
+test('09 real API workflow: School draft, submit, certificate and Division check', async ({ page }) => {
+  const db = await database();
+  try {
+    const vat = {
+      id: 'synthetic-vat-atc', name: 'TVAT05', tax_type: 'VAT', rate: 5,
+      transaction_type: 'All', business_type: 'Both', effective_from: '2020-01-01'
+    };
+    const ewt = {
+      id: 'synthetic-ewt-atc', name: 'TEWT01', tax_type: 'EWT', rate: 1,
+      transaction_type: 'All', business_type: 'Both', effective_from: '2020-01-01'
+    };
+    for (const row of [vat, ewt]) {
+      await db.execute('INSERT INTO atcs(id,name,data,active,version) VALUES(?,?,?,?,?)',
+        [row.id, row.name, JSON.stringify(row), 1, 1]);
+    }
+    const profile = {
+      id: SUPPLIER, name: 'Synthetic Supplier', business_type: 'Corporate',
+      vat_status: 'VAT Registered',
+      transaction_profiles: [{ transaction_type: 'Supplier of Goods',
+        business_atc: vat.id, ewt_atc: ewt.id }],
+      tin: '00000000000000', address: 'Synthetic supplier address', zip: '6300'
+    };
+    await db.execute('UPDATE suppliers SET data=? WHERE id=?', [JSON.stringify(profile), SUPPLIER]);
+    const division = {
+      name: 'Synthetic Division', tin: '00000000000000',
+      address: 'Synthetic division address', zip: '6300',
+      representative: 'Synthetic Division Reviewer',
+      designation: 'Testing Reviewer', representative_tin: '00000000000000'
+    };
+    await db.execute('INSERT INTO division(id,name,data,version) VALUES(?,?,?,1)',
+      ['division', division.name, JSON.stringify(division)]);
+  } finally {
+    await db.end();
+  }
+
+  await signIn(page, 'synthetic_school_a', SCHOOL_PASSWORD);
+  const school = await bootstrap(page);
+  const draft = await postApi(page, school.csrf, 'saveTransaction', {
+    supplier_id: SUPPLIER, transaction_type: 'Supplier of Goods',
+    source_fund_id: 'fund-mooe', date: '2026-01-13', amount: '112.00'
+  });
+  expect(draft.status()).toBe(200);
+  const created = await draft.json();
+  expect(created.status).toBe('draft');
+  expect(created.reference).toMatch(/^2026-/);
+  expect(created.id).toBeTruthy();
+
+  const submitted = await postApi(page, school.csrf, 'submitTransaction', {
+    id: created.id, version: 1
+  });
+  expect(submitted.status()).toBe(200);
+  const submittedData = await submitted.json();
+  expect(submittedData.status).toBe('submitted');
+  expect(submittedData.submission_hash).toMatch(/^[a-f0-9]{64}$/);
+
+  const schoolCert = await postApi(page, school.csrf, 'certificate', { id: created.id });
+  expect(schoolCert.status()).toBe(200);
+  const schoolSnapshot = await schoolCert.json();
+  expect(schoolSnapshot.integrity_level).toBe('submitted_verified');
+  expect(schoolSnapshot.snapshot.amounts.base).toBe(10000);
+  expect(schoolSnapshot.snapshot.amounts.gross).toBe(11200);
+
+  const cannotCheck = await postApi(page, school.csrf, 'check', { id: created.id, version: 2 });
+  expect(cannotCheck.status()).toBeGreaterThanOrEqual(400);
+
+  await signIn(page, OWNER_USER, OWNER_PASSWORD);
+  const owner = await bootstrap(page);
+  const check = await postApi(page, owner.csrf, 'check', {
+    id: created.id, version: 2, remarks: 'Synthetic review approved'
+  });
+  expect(check.status()).toBe(200);
+  expect((await check.json()).ok).toBe(true);
+
+  const certificate = await postApi(page, owner.csrf, 'certificate', { id: created.id });
+  expect(certificate.status()).toBe(200);
+  const verified = await certificate.json();
+  expect(verified.integrity_level).toBe('checked_verified');
+  expect(verified.snapshot.amounts.gross).toBe(11200);
+
+  const databaseAgain = await database();
+  try {
+    const [rows] = await databaseAgain.execute(
+      'SELECT status,submission_hash,checked_snapshot_hash,SHA2(snapshot,256) AS calculated_hash FROM transactions WHERE id=?',
+      [created.id]
+    );
+    expect(rows[0].status).toBe('checked');
+    expect(rows[0].submission_hash).toMatch(/^[a-f0-9]{64}$/);
+    expect(rows[0].checked_snapshot_hash).toBe(rows[0].calculated_hash);
+    const [history] = await databaseAgain.execute(
+      'SELECT COUNT(*) AS entries FROM transaction_history WHERE transaction_id=?', [created.id]
+    );
+    expect(Number(history[0].entries)).toBeGreaterThanOrEqual(3);
+  } finally {
+    await databaseAgain.end();
+  }
+});
+
+test('10 simultaneous local dashboard reads complete and report response-time samples', async ({ page }) => {
   await signIn(page, OWNER_USER, OWNER_PASSWORD);
   const timings = await Promise.all(Array.from({ length: 15 }, async () => {
     const start = Date.now();
