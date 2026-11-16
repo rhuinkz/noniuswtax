@@ -15,11 +15,11 @@ jobs:
       - name: Lint PHP sources
         run: find . -type f -name '*.php' -not -path './vendor/*' -print0 | xargs -0 -n1 php -l
       - name: Calculation baseline smoke
-        run: php tests/calculation-smoke.php
+        run: php tests/calculation-smoke.php && php tests/release/tax-golden.php
       - name: Security policy and SQL diagnostics
         run: |
           php tests/safety-smoke.php
           php tests/sql-guard-smoke.php
           php tests/source-policy.php
       - name: Check JS syntax
-        run: node --check assets/app.js && node --check assets/login-slideshow.js && node --check tests/release/specs/full-release.spec.js && node --check tests/release/playwright.config.cjs
+        run: node --check assets/app.js && node --check assets/login-slideshow.js && node --check tests/release/specs/full-release.spec.js && node --check tests/release/playwright.config.cjs && node --check tests/release/report.cjs
