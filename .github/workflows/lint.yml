@@ -16,5 +16,10 @@ jobs:
         run: find . -type f -name '*.php' -not -path './vendor/*' -print0 | xargs -0 -n1 php -l
       - name: Calculation baseline smoke
         run: php tests/calculation-smoke.php
+      - name: Security policy and SQL diagnostics
+        run: |
+          php tests/safety-smoke.php
+          php tests/sql-guard-smoke.php
+          php tests/source-policy.php
       - name: Check JS syntax
         run: node --check assets/app.js && node --check assets/login-slideshow.js
