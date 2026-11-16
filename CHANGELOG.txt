@@ -1,0 +1,238 @@
+Non-IUS Withholding Tax Monitoring v0.4.56
+- Reduce database and PHP work for filtered Reports and full CSV exports: apply parameterized, conservative Source of Fund and VAT/EWT ATC candidate predicates before transaction-page and approval-detail hydration.
+- Preserve the existing PHP frozen-snapshot and editable Draft/Returned profile checks as the final authority, avoiding changes to historical ATC/fund decisions and exact financial totals.
+- Reuse v0.4.55 page/summary optimization for ordinary Reports; keep the established Checked-only summary, selected-ATC withholding, row ordering, school/Division scoping, print cap and full streamed CSV behavior.
+- No migration or changes to tax calculations, transactions, approvals, month locks, Form 2307, bell, Action Center, or Project Owner-only settings. Requires installed v0.4.55.
+
+Non-IUS Withholding Tax Monitoring v0.4.55
+- Optimize ordinary Reports without Source of Fund/ATC restriction: count and sum Checked saved-snapshot financial figures with a single SQL aggregate rather than loading all matching rows into PHP.
+- Retrieve only the requested 100-row report page (or the existing capped print page), with school/Division authorization and approval details preserved.
+- Keep the existing per-record report generator for historical Source of Fund and ATC filters and for streamed CSV exports; preserve frozen amounts, withholding/net calculations, status handling and all existing report displays.
+- No database migration, no changes to tax calculations, application permissions, transaction approval, month locking, notifications, or existing CSV/print limits. Requires installed v0.4.54.
+
+Non-IUS Withholding Tax Monitoring v0.4.54 — Division-wide search and CSV scalability (staging candidate)
+- Transactions: SQL-side free-text searching and server-side page fetching, with register count/tax totals preserving the current status/month and saved snapshot behaviors; no full PHP search-result hydration.
+- Reports: bounded 250-row keyset batch processing with page-local approval lookup; historical and role filters unchanged. Reports over 5,000 rows can now export full CSV directly from server while Print Report retains its 5,000-row safety guard.
+- Migration 036 adds chronological and month-scope indexes for more predictable large data retrieval. Index creation may take time and require adequate database disk space; must be tested on staging and backed up beforehand.
+- All approved tax/ATC/Checked/Void/cancellation, net and withheld summaries, Form 2307, period locking, Action Center and Owner-only controls remain unchanged.
+
+Non-IUS Withholding Tax Monitoring v0.4.53
+- Keep the existing regular Reports financial summary and Total Tax Withheld column; add Net Amount Paid for consistency with v0.4.52 Month-End Reconciliation.
+- Show calculated Net Amount Paid (= Gross minus Total Tax Withheld) as a Checked-only financial summary card and in each regular Reports transaction row with available saved/display monetary amounts.
+- Include the same new summary and column in Print Report and a Net Amount Paid field in CSV export; preserve the existing 5,000-row export safety guard, status/school/ATC filters and the Selected ATC withheld calculation.
+- Explicitly label net as a calculated amount, not confirmation of actual cash or bank disbursement. Financial summary includes Checked transactions only, while per-row tax/net figures follow existing status-based snapshot display behavior.
+- No changes to tax calculations, application API/database, approved transactions, approval, locking, audits, bell/Action Center, login gallery, or owner-only Reset Test Data.
+- No database migration. Requires installed v0.4.52. Financial reconciliation is still awaiting owner verification.
+
+Non-IUS Withholding Tax Monitoring v0.4.52
+- Display Net Amount Paid in both the summary and each school/Division Office row of Reports > Month-End Reconciliation, immediately after Total Tax Withheld.
+- Derive Checked-only Net Amount Paid in exact centavos from the existing saved Checked gross minus Total Tax Withheld; no new database queries or changes to tax calculation.
+- Explain that computed net is not a confirmation of actual bank disbursement. Adjust the empty-state table colspan.
+- Preserve v0.4.51 Total Tax Withheld column, v0.4.50 reconciliation and safeguards, all existing transaction/report/period/role workflows, and owner-only Reset Test Data.
+- No database migration. Requires installed v0.4.51. Financial accuracy still requires owner verification using the existing Reports page.
+
+Non-IUS Withholding Tax Monitoring v0.4.51
+- Add a per-origin Total Tax Withheld column immediately after EWT in Reports > Month-End Reconciliation for every school and Division Office row.
+- Use the already returned Checked snapshot total (checked_total, stored in centavos); do not recompute it in the browser. The existing Total withheld summary card remains unchanged.
+- Adjust the table's empty-state column span to keep the layout aligned.
+- Preserve v0.4.50 monthly reconciliation's exception checks, month/origin scope, role restrictions and performance safeguards; no changes to API, database, tax calculation, existing Reports, print/CSV, updates or business workflows.
+- No database migration. This display-only patch requires installed v0.4.50. Functional verification of v0.4.50 reconciliation totals is still pending owner acceptance.
+
+Non-IUS Withholding Tax Monitoring v0.4.50
+- Division-wide scalability and accuracy: transaction-register totals use bounded database-side aggregation of saved monetary snapshots; editable transactions without saved amounts retain their approved preview calculation logic.
+- Add a read-only Month-End Reconciliation view under Reports for Project Owner and Division Admin, using grouped SQL totals instead of fetching every transaction. Show Checked totals, Void/Cancelled counts, unfinished work, pending edits, cancellations, submitted-revision exceptions, and each origin's month state.
+- Detect missing or mismatched Checked snapshot integrity seals, missing saved amounts, and mismatched Checked gross amounts as reconciliation warnings. No records are automatically changed or blocked.
+- Bound SQL Console results to 200 rows at the database fetch layer, rather than loading arbitrary query results into PHP memory before truncation. Existing owner-only SQL diagnostic functionality is unchanged.
+- Keep the current Form 2307, submitted/Checked workflow, month-open/closed rules, ATC filtering, 5,000-row report export safety limit, separate Cancelled filter, Action Center/bell, backup/update flow and Owner-only Reset Test Data unchanged.
+- No database migration. Existing migration 035 remains current. Next scaling stage should address large free-text searches, authenticated streamed exports and measured production-scale database indexing.
+
+Non-IUS Withholding Tax Monitoring v0.4.49
+
+Reports — All Schools Origin Filter
+- Add All Schools to Reports > Origin, immediately after the existing Division Office option; retain All origins and each individual school in their previously approved order.
+- Selecting All Schools includes all school-originated transactions available to the Division user, while excluding Division Office-originated transactions. Selective individual school and Division Office filters remain unchanged.
+- Apply All Schools at the database query level and the existing report row validation, retaining current report date, supplier, fund, ATC, status, and role restrictions.
+- Checked-only financial totals, selected ATC withheld values, print view, and CSV export continue to match the filtered rows. The print heading automatically reads All Schools when selected.
+- Do not change school-user report scope or unrelated Transactions register, tax calculations, approvals, bell, Action Center, period rules, Update History, login gallery, or owner-only Reset Test Data.
+- No database migration. Incremental maintenance update from the owner-confirmed working v0.4.48 staging baseline.
+
+Non-IUS Withholding Tax Monitoring v0.4.48
+
+Completed-Period Notification Accuracy — Maintenance Patch
+- Fix false bell and Action Center "period coverage incomplete" notifications when some or all transaction targets are Closed/Locked or intentionally Not Opened. A selective opening is not an unfinished task.
+- Keep a Division first-opening reminder only when NO active school or Division target has ever been opened for the current month.
+- Suppress School User pending notification when their current month is Closed/Locked; retain waiting reminder when it is genuinely Not Opened.
+- Show the true Open/Reopened, Closed/Locked, and Not Opened breakdown on the Division Dashboard without wrongly warning about completed months. Treat the normal Closed/Locked state on School Dashboards as completed rather than a red error warning.
+- Keep existing actionable Draft, Submitted, Returned, pending Checked edit, cancellation, and password reset alerts, including Action Center badge and bell. Void, Checked and Cancelled records remain nonblocking according to established rules.
+- No change to any transaction state, period opening/closing enforcement, tax calculation, roles, report, or audit records. No database migration. Reset Test Data unchanged.
+- Builds exclusively on the owner-confirmed working v0.4.47 baseline.
+
+Non-IUS Withholding Tax Monitoring v0.4.47
+
+Action Center sidebar attention badge (interface-only)
+- Add a numeric attention badge beside Action Center for Project Owner and Division Admin.
+- The badge always matches the existing Action Center "Items requiring attention" total. Notices waiting for another reviewer are not included, exactly as in v0.4.46.
+- The count uses the same existing role-scoped notifications already loaded for the bell, with no new server request. It refreshes on login, application reload, Action Center refresh, and existing notification polling.
+- Hide the badge at zero and display 99+ when more than 99 items require action. Screen reader link labels report the full count.
+- Keep the notification bell's existing badge and notification behavior unchanged. No new approvals or database changes; School Users have no Action Center navigation item.
+- Preserve v0.4.46 Action Center functionality and all earlier approved workflows, including Project Owner-only Reset Test Data.
+- No database migration required.
+
+Non-IUS Withholding Tax Monitoring v0.4.46
+
+Division Action Center (workflow-preserving enhancement)
+- Add an Action Center sidebar entry to Project Owner and Division Admin only. School Users do not receive the navigation item.
+- Organize the existing role-scoped bell notification feed into school submissions, pending Checked edits, cancellation requests, password resets, Division drafts, period reminders, and items waiting for another reviewer.
+- Each item opens its existing review details or account/period management screen. No new approval, cancellation, checking, tax or audit behavior is introduced.
+- Retain the bell and its polling, badge, notifications, and click actions unchanged. Manual Refresh actions uses the existing notifications endpoint.
+- The Action Center shows only the same currently pending items the logged-in Division user is authorized to see; it does not create or store new records.
+- Preserve v0.4.45 login gallery, v0.4.44 Update History, Settings Update/SQL tabs, two-step updater, transaction performance, ATC reports, period locks, existing All statuses excluding Cancelled, and Project Owner-only Reset Test Data.
+- No database migrations required.
+
+Non-IUS Withholding Tax Monitoring v0.4.45
+
+Project Owner configurable login image gallery (maintenance update)
+- Replace cloud-service-account login slideshow setup with authenticated Project Owner image upload/removal and slideshow enable/disable controls under System Settings → Update.
+- JPEG/PNG/WebP/GIF uploads are decoded by PHP GD, scaled into optimized JPEGs with metadata stripped, and listed in a private local gallery manifest. A random slideshow runs using uploaded local images only. Limit 8 MB/image, 8 per upload, 40 images total.
+- The existing v0.4.44 Update History, mandatory Update Review/Install flow, Update and SQL tabs, all tax/transaction/reporting behavior and Project Owner-only Reset Test Data remain unchanged.
+- No migration required. Images and gallery metadata are stored outside the update package and are preserved by subsequent application updates.
+- Previous Google Cloud cron setup is retired. Any previously scheduled Drive sync must be disabled; no Google key or credentials are required.
+
+Non-IUS Withholding Tax Monitoring v0.4.44
+- NEW: Project Owner Update History in System Settings → Update. Migration 035 adds an independent update_history table. Future reviewed installations record who installed them, versions, timestamps, release information and success or failure. Older audit-only records are explicitly labeled unverified instead of assumed successful.
+- NEW: Animated login background from a private Google Drive picture folder using a read-only service account and a scheduled CLI-only sync. New/removed supported JPEG, PNG, WebP and GIF pictures are reflected on the next sync. Photos are converted to optimized local JPEG files without EXIF/GPS; visitors never need Google Drive credentials.
+- The login page remains usable before Drive configuration and if syncing fails. Reduced-motion preferences are respected. No credentials or sample photos are shipped with this update.
+- Preserved: v0.4.43 Update and SQL tabs, two-step Upload and Review/Install with required checkbox, backup/rollback safeguards and owner-only controls. No changes to transaction, reporting, ATC, tax, period, cancellation or approval workflows.
+- Requires: secure service account setup outside the webroot, viewer access to the selected private Drive folder, PHP cURL/OpenSSL/GD and a hosting scheduled task. Download/automatic sync is inactive until configured.
+
+Non-IUS Withholding Tax Monitoring v0.4.43
+
+System Settings: Update and SQL tabs
+
+- Combined the Project Owner's existing System Settings and read-only SQL Console under System Settings with two tabs: Update and SQL.
+- Removed the separate SQL Console sidebar navigation item. SQL remains available only to Project Owner users through the existing protected, read-only sql-console.php endpoint.
+- Preserved the v0.4.42 Upload and Review / mandatory checkbox / Install Update workflow, Reset Test Data controls, migration diagnostics, and update review state when switching tabs.
+- Reused existing Administration tab styling and kept the existing SQL editor, query results, server-side permissions and audit behavior unchanged.
+- No changes to transactions, permissions, ATC reports, monthly periods, forms, financial calculations, or database schema. No migration required.
+- Built strictly from the user-confirmed working v0.4.42 baseline.
+
+Non-IUS Withholding Tax Monitoring v0.4.42
+
+Reviewed Application Updates — Candidate
+
+- Updates are now completed in two explicit steps: Upload and Review, then Install Update.
+- Validated review displays target version, compatibility requirements, release summary, release notes, affected files and ZIP SHA-256 checksum.
+- A mandatory review acknowledgment enables the Install Update button; cancelling or changing the ZIP does not install anything.
+- The Project Owner must use the same authenticated session, fresh review token and explicit server-side acknowledgment to install the exact reviewed ZIP.
+- Review tokens expire after 15 minutes; the staged ZIP is SHA-256-checked and package content checks are repeated immediately before installation.
+- Existing application code/database backups, maintenance lock, rollback, checksum verification, migration behavior, status reports, transaction loading optimizations, and owner-only Reset Test Data remain intact.
+- No database migration required. Built strictly on owner-confirmed working v0.4.41.
+
+Non-IUS Withholding Tax Monitoring v0.4.41
+
+Transaction Loading & Report Performance — Candidate
+
+- Built directly from installed and recovery-verified v0.4.40; approved workflows preserved.
+- SQL-bounds unsearched transaction register pages to the selected 25, 50, or 100 rows, rather than hydrating every row for presentation. Retains role scope, status and month restrictions, exact historical subtotal semantics including editable Draft calculations, and existing search behavior.
+- Restricts pending edits/backups/cancellation detail joins to transaction IDs visible on the current register page.
+- Calculates Dashboard Checked totals in SQL from frozen snapshots and retrieves only 10 recent rows, reducing PHP-side decoding and memory usage for older records.
+- Excludes unrelated Checked records from the notifications query while keeping school and Division action states unchanged.
+- Streams full Reports processing and retains at most 5,000 displayed rows while maintaining exact Checked-only summaries, ATC filters, actual row counts, and truncation warnings.
+- Does not modify transaction forms, tax calculations, certificate creation, approvals, month locking, historical migrations, or Project Owner-only Reset Test Data.
+- Requires no database migration. Use a staging backup and test totals, pagination, search, notifications, reports and dialog behavior before treating as accepted.
+
+--- Previous Release ---
+
+Non-IUS Withholding Tax Monitoring v0.4.40
+
+Maintenance: Migration Visibility & Backup Recovery Portability
+
+- Builds strictly on owner-confirmed working v0.4.39 and preserves all report, period-lock, transaction, approval, cancellation and Form 2307 workflows.
+- Avoids redundant schema advisory locks and CREATE TABLE checks on ordinary requests after all migration outcomes are recorded; retains existing transaction-reference backfill behavior.
+- Guards against a malformed existing checked_snapshot_hash column when resuming a partially completed migration 034.
+- Adds read-only Project Owner schema diagnostics: skipped/pending migrations, missing expected triggers, monthly-period tables, checked certificate integrity column/hash presence.
+- Improves update backup portability by dropping source-account DEFINER clauses from exported CREATE TRIGGER SQL, failing safely on unrecognized trigger definitions, and detecting incomplete SQL writes.
+- Creates update backup directories with restrictive permissions (when host filesystem permits); restricts generated ZIP and SQL dump permissions to the backup owner.
+- No new database migration, no changes to tax calculations or status transitions, and no change to Project Owner-only Reset Test Data.
+
+Compatibility and deployment notes:
+- This is a maintenance candidate, not yet confirmed installed. Install only after preserving an independent off-server backup. Review System Settings -> Database migrations and any integrity warnings after upgrading.
+- Full SQL recovery requires a MySQL/MariaDB CLI client supporting DELIMITER directives and privileges to create tables/triggers. Test restoration on an isolated empty recovery database; never overwrite staging or production.
+- No live PHP 8.2 / MariaDB 11.8 installation or full restore was executed as part of preparing this candidate; those acceptance tests remain pending.
+
+--- Previous Release ---
+
+Non-IUS Withholding Tax Monitoring v0.4.39
+
+Reports — ATC Code Filter, Print, and Export
+
+- Builds exclusively on owner-confirmed working staging v0.4.38.
+- Adds an ATC Code dropdown (VAT or EWT) to the existing Reports filters; combines with existing Month, Origin, Supplier, Source of Fund and Status filters.
+- Matches Checked/Submitted/Void reports against the recorded frozen ATC code, not the mutable current ATC master; Draft/Returned records without a snapshot use the transaction supplier profile for display/filtering.
+- Displays VAT ATC and EWT ATC codes in report rows, printouts and CSV export; CSV additionally includes Selected ATC Withheld for per-code extraction.
+- When ATC is selected, explicitly shows the checked-only tax withheld for that ATC; original financial summary cards remain unchanged and continue to total both withholding types on matching transactions.
+- Maintains school-level access restrictions and report 5,000-row safety limit, avoids cancelled/removed transactions, preserves existing calculations and approval behavior.
+- Preserves v0.4.38 Generate & Calculate dialog-on-top with Transactions register loaded behind it.
+- No database migration or reset; Project Owner-only Reset Test Data unchanged.
+
+--- Previous Release ---
+
+Non-IUS Withholding Tax Monitoring v0.4.38
+
+Generate & Calculate — Keep Dialog Open and Load Transactions Behind It
+
+- Built directly on the installed v0.4.37 staging baseline.
+- After a successful Generate & Calculate save, keep the transaction/computation dialog open for review and the user's explicit choice to submit or continue editing.
+- Refresh the Transactions register behind the dialog instead of leaving Dashboard there; show the saved reference and highlight the saved transaction where it appears.
+- Keep save failures, duplicate warnings, period locking, Checked-edit approval, and existing submit actions unchanged.
+- No database migration, data reset, tax calculation, or permission changes.
+
+--- Previous Release ---
+
+Non-IUS Withholding Tax Monitoring v0.4.37
+
+Stability and Recovery Hardening — CANDIDATE, not yet accepted in production
+
+- Extends v0.4.36 without changing the Project Owner-only Reset Test Data operation.
+- Uses unpredictable, cryptographically generated temporary passwords for auto-created school accounts and approved password resets; first-login password change remains mandatory.
+- Serializes monthly open/close operations and transaction writes to the same period/origin using named MySQL advisory locks; DB triggers remain a second line of defense.
+- Creates a separate Checked-snapshot SHA-256 seal on both initial Division checking and approved edits; keeps original submission hash unchanged. Verifies the saved full snapshot before printing Form 2307 without altering the certificate layout or tax calculation.
+- Adds migration 034 to backfill seals for existing Checked records; existing Void records remain immutable and use a labeled legacy read-only certificate path.
+- Exports a transaction-consistent SQL data snapshot plus trigger definitions in update backups, including a table/trigger count and SHA-256; fails closed when required triggers are inaccessible.
+- Rejects updates without complete per-file SHA-256 manifest, matching APP_VERSION/CHANGELOG, parseable PHP code, safe ZIP paths and bounded package size. Stages file replacement atomically per file and preserves code rollback.
+- Pushes supported period/status/origin predicates into SQL before decoding transaction registers and report rows; exact report totals and filters remain unchanged (pagination is still computed after filtering).
+- Shows actual monthly closing blocker counts while providing up to six reference examples.
+- Pins pdf-lib v1.17.1 with an SRI checksum; browser compatibility verification remains required before production acceptance.
+- Recognizes that database DDL migrations are not transactionally rolled back by code rollback. Requires post-install migration checks and restore rehearsal.
+
+Remaining independent validation tasks (not claims of correction):
+- Two-session acceptance test for monthly advisory locks and closing vs transaction changes, including pending edit/cancellation races (F05); static review alone cannot prove concurrency behavior.
+- Full restore from encrypted configuration/storage/database/trigger set on a test environment (F06).
+- High-volume SQL pagination and aggregate equivalence under realistic data (F08).
+- Browser PDF generation with the CDN/SRI dependency and tax professional review for actual BIR Form 2307 (F09/F13).
+- Authenticated provenance is not cryptographically signed; update files are integrity-checked but still require trusted distribution and Project Owner approval (F04).
+- Historic schema columns for dormant BIR Encoded/Reconciled are intentionally retained (F12).
+
+Migration: 034_checked_certificate_integrity (required). Take a full independent backup including triggers first.
+Status: prepared release candidate only; not installed or confirmed working.
+
+--- Previous Release ---
+
+Non-IUS Withholding Tax Monitoring v0.4.36
+
+Monthly Transaction Period Control
+
+- Builds strictly on the confirmed working v0.4.35 baseline.
+- Adds Division-controlled monthly transaction periods with per-target states: Not Opened, Open, Closed/Locked, and Reopened.
+- Division can select a year/month and open it for the entire division, all schools, selected schools, and/or Division Office independently.
+- Closing uses the same per-school/Division Office targeting, so one school may be locked while another remains open.
+- Reopening a previously closed period requires a reason; opener/closer/reopener, timestamps, target, month, and reopening reason are permanently recorded in period history and the Audit Log.
+- Transaction date is the controlling period. Transactions cannot be created or changed unless the applicable school/Division Office month is Open or Reopened.
+- Server-side checks cover Draft creation/editing, submission/resubmission, Return for Correction, Division checking, Checked edit approval/cancellation, Draft cancellation, Checked cancellation request/review, voiding, and revision-Draft restoration.
+- Optional database triggers provide an additional enforcement layer against transaction inserts/updates outside an open period when hosting permissions permit.
+- A target cannot be closed while it has unfinished Draft/Submitted/Returned transactions, pending Checked edits, pending cancellation requests, or a preserved Submitted version that can still be restored from a revision Draft.
+- Existing Checked records remain viewable and printable while a period is closed; closing does not alter frozen snapshots, references, Form 2307 data, or historical records.
+- Dashboard shows the current month period status. School users are warned when their month is Not Opened or Closed; Division users see current coverage.
+- Adds a Division-only Transaction Periods workspace with target checkboxes, Select Entire Division / Select All Schools controls, Open/Close actions, and monthly action history.
+- Notification bell warns School Users when the current month is not available and alerts Division users when current-month coverage is incomplete.
+- Reset Test Data now also clears monthly transaction-period controls/history while preserving master data, accounts, and configuration.
