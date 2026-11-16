@@ -42,6 +42,17 @@ The previous 10/10 Playwright smoke result (2026-11-16, commit `12686f0dd4a93484
 
 When a fresh local run completes, the single `test-results/release-report.html` and `release-summary.json` provide automated PASS/FAIL evidence. **The newly expanded suite has not yet been run on the owner's Windows Docker installation.** Keep its technical gate PENDING until that run, and keep the independent BIR/printed form, migration of an existing installation, Hostinger security, target-capacity and authorized release gates PENDING regardless of the automated result.
 
+## Expanded local package — latest owner run (2026-11-16)
+
+The user-provided Windows Docker log for the **expanded** release package confirms:
+- Source stage: **27 PHP files linted**, **13 synthetic independent decimal arithmetic cases passed**, calculation/safety/SQL-guard smokes passed.
+- Playwright stage: **12/12 passed**, including actual locally rendered Form 2307 PDF and PNG evidence, fresh installation, access controls, checked certificate hash, and SQL integrity.
+- Performance probe: **10,000 synthetic transactions**, **30 concurrent HTTP requests**, p95 **3,954 ms**; informational, no target capacity acceptance threshold established.
+- Backup/restore stage: **NOT TESTED** because the host's Windows CRLF checkout prevented Linux Bash from parsing `set -Eeuo pipefail` in the mounted test script. The script did not reach any database backup/restore assertions.
+- Reporting stage: emitted FAIL for the full package and PENDING for production authorization, correctly reflecting the incomplete recovery check.
+
+A follow-up review-branch fix now normalizes CRLF in memory before invoking the backup/restore script and adds `.gitattributes` for LF shell files plus CI regression checks. **The complete expanded package still requires another local execution** to verify database recovery. The successful 12/12 tests are not evidence that backup/restore or production readiness passed.
+
 ## Release evidence template
 
 - Candidate version and Git commit:
