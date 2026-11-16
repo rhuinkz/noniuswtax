@@ -14,7 +14,7 @@ function Run-Docker([string[]] $runArgs) {
 Write-Host 'NONIUSWTAX: one-command local release verification' -ForegroundColor Cyan
 Write-Host 'Uses a fresh synthetic database; never your production database.'
 try {
-    Run-Docker @('info', '--format', '{{.ServerVersion}}')
+    Run-Docker (@('info', '--format', '{{.ServerVersion}}'))
     Run-Docker ($baseArgs + @('down', '--volumes', '--remove-orphans'))
     Run-Docker ($baseArgs + @('build', 'web', 'browser'))
     Run-Docker ($baseArgs + @('up', '-d', '--wait', 'db', 'web'))
@@ -28,7 +28,8 @@ try {
     Write-Host ('TEST PACKAGE FAILED: ' + $_.Exception.Message) -ForegroundColor Red
 } finally {
     Write-Host 'Stopping disposable containers and deleting their test database...' -ForegroundColor Yellow
-    & docker @($baseArgs + @('down', '--volumes', '--remove-orphans'))
+    $cleanupArgs = $baseArgs + @('down', '--volumes', '--remove-orphans')
+    & docker @cleanupArgs
 }
 if ($passed) {
     Write-Host 'PASS: Automated local test package completed.' -ForegroundColor Green
