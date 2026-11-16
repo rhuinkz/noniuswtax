@@ -1,0 +1,26 @@
+# Never send deployed application data or developer secrets into the test build context.
+.git
+.github
+.env
+.env.*
+!.env.example
+config.local.php
+config.*.local.php
+storage
+temp
+test-results
+node_modules
+vendor
+*.sql
+*.sql.gz
+*.dump
+*.sqlite
+*.db
+*.zip
+*.bak
+*.pem
+*.key
+*.tar.gz
+*.7z
+*.rar
+INSTALL_KEY.txt
