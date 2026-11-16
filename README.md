@@ -32,3 +32,7 @@ The v0.4.56 manifest specifies **PHP 8.2 minimum**. PHP 8.4/8.5 are preferred fo
 ## Review limitations
 
 Local PHP and JavaScript lint, the three-file update manifest hashes, and a small calculation smoke test passed. **Not yet performed:** deployed HTTP/security tests, live database integration, migration/restore test, peak concurrency load test or finance/legal certification of tax computations and official BIR certificate outputs. Review the [risk register](docs/TECHNICAL_REVIEW.md) before production deployment.
+
+
+## Pending review-branch security fixes (not a production release)
+The source-review branch adds migration `037_checked_hash_period_guard` (closed-month certificate seal protection), a conservative read-only owner SQL diagnostic guard, stricter Apache file restrictions and additional CI checks. **Do not deploy or feed this GitHub branch into the in-app updater** as an ordinary release; the v0.4.56 manifest reflects the original release, and staging DB tests/tax approval are still pending.
