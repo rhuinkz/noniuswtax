@@ -29,7 +29,7 @@ else echo 'FAIL: Source and golden-case checks'; fi
 echo 'STAGE 2/4: Playwright, actual PDF, roles, SQL, 10k load'
 if "${COMPOSE[@]}" run --rm browser; then browser_ok=1; else echo "FAIL: Browser/integration suite"; fi
 echo 'STAGE 3/4: SQL backup/restore with triggers and guard validation'
-if "${COMPOSE[@]}" exec -T db bash /suite-tests/backup-restore.sh; then restore_ok=1; else echo "FAIL: Backup/restore"; fi
+if "${COMPOSE[@]}" exec -T db sh -ec "tr -d '\\015' < /suite-tests/backup-restore.sh | bash"; then restore_ok=1; else echo "FAIL: Backup/restore"; fi
 echo 'STAGE 4/4: Write one HTML/JSON release report'
 if "${COMPOSE[@]}" run --rm --no-deps browser node /suite/report.cjs; then report_ok=1; else echo "FAIL: One or more automated release gates"; fi
 echo 'Consolidated report: test-results/release-report.html'
