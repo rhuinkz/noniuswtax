@@ -16,7 +16,7 @@ docker info --format '{{.ServerVersion}}'
 "${COMPOSE[@]}" build web browser
 "${COMPOSE[@]}" up -d --wait db web
 echo "Running PHP syntax, calculation and source-security smoke checks..."
-"${COMPOSE[@]}" run --rm --no-deps web sh -ec 'find /var/www/html -type f -name "*.php" -print0 | xargs -0 -n1 php -l && php tests/calculation-smoke.php && php tests/safety-smoke.php && php tests/sql-guard-smoke.php'
+"${COMPOSE[@]}" run --rm --no-deps web sh -ec 'php tests/release/php-lint.php && php tests/calculation-smoke.php && php tests/safety-smoke.php && php tests/sql-guard-smoke.php'
 echo "Running combined browser, identity, migration, SQL and HTTP suite..."
 "${COMPOSE[@]}" run --rm browser
 echo "PASS: Automated local verification completed."
