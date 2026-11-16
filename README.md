@@ -40,3 +40,18 @@ The source-review branch adds migration `037_checked_hash_period_guard` (closed-
 
 ## One-command local release verification (Docker + Playwright)
 Use the disposable [Release Test Package](tests/release/README.md) to test this source with **one Windows PowerShell command**. It creates synthetic data, runs PHP/JS, database trigger, authorization and browser checks, exports reports, and removes its test database. A passing report **does not** authorize production deployment; see [Release Acceptance Gate](docs/RELEASE_ACCEPTANCE_GATE.md).
+
+
+## Formal release-candidate preparation (not approved for deployment)
+
+The reviewed v0.4.56 source at exact commit `adf3fb4bdce027f65c2a18de2ca4d94e8424e35f` passed the full disposable local test package (12/12 Playwright tests, synthetic backup/restore and PDF checks on 2026-11-16). The separately prepared `release/0.4.57-rc1-preparation` branch adds a **staging-only candidate builder** and review documents. It does not deploy changes or authorize production access.
+
+After fetching that branch, run from Windows PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\Build-ReleaseCandidate.ps1
+```
+
+This builds an **unapproved** `0.4.57-rc.1` ZIP from the exact tested source commit, changes only the version/changelog inside the package, and verifies the ZIP and its per-file SHA-256 manifest. Outputs are local under ignored `release-out/`; **do not feed them into a live updater**.
+
+Review the [candidate dossier](docs/RELEASE_CANDIDATE_0.4.57_RC1.md), [staging/rollback runbook](docs/PRODUCTION_DEPLOYMENT_RUNBOOK.md), [BIR/finance approval record](docs/FINANCE_BIR_SIGNOFF.md) and [formal go/no-go signoffs](docs/RELEASE_APPROVAL_RECORD.md). All production approvals remain **PENDING**. The original v0.4.56 README review limitations above are historical; consult the latest release acceptance gate for verified 2026-11-16 automated results.
