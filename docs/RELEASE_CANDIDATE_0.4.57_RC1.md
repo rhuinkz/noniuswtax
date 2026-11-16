@@ -57,6 +57,12 @@ Outputs are saved under `staging-results/` (separate from `test-results/`), incl
 
 **Caveat:** This rehearses the updater on a newly installed application filled with synthetic data. It does not establish compatibility with a previously deployed real-world database or its historical schema. An independently sanitized clone of the **actual installed** database and a recovery drill are still **required for production approval**. This local rehearsal script was newly added on the release preparation branch; **do not mark it PASS before its first actual Docker run.**
 
+### Local staging rehearsal — initial diagnostic failure (2026-11-16)
+
+The owner ran `Test-StagingCandidate.ps1` against the exact approved-for-staging candidate hash `e8d1fe062073f81d68bd0c2707951a0dcae1543a8d5c1aa0dd074a1e5ccb367a`. All **12/12 synthetic Playwright tests passed**, followed by successful update ZIP review and installer API response with trigger backup metadata. The rehearsal then stopped at the test assertion **"Candidate runtime did not expose updated version"** while inspecting the owner dashboard CSS link. The rollback stage was **not run**.
+
+This first attempt is a **FAIL for the integrated staging rehearsal**, not proof that the actual code install or database integrity failed. The candidate script now also inspects the anonymous login page's current version and the authenticated `window.NONIUS.version` value, diagnoses unexpected redirection and permits a required post-update re-login. A new run is needed before the candidate upgrade/rollback can be considered verified. The candidate ZIP and checksum remain **unchanged**.
+
 ## 3. Scope of security changes
 
 - Removed the destructive `resetTestData` branch from reviewed source; **previously deployed versions may still have it** (Issue #3).
