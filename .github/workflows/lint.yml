@@ -22,4 +22,4 @@ jobs:
           php tests/sql-guard-smoke.php
           php tests/source-policy.php
       - name: Check JS syntax
-        run: node --check assets/app.js && node --check assets/login-slideshow.js
+        run: node --check assets/app.js && node --check assets/login-slideshow.js && node --check tests/release/specs/full-release.spec.js && node --check tests/release/playwright.config.cjs
