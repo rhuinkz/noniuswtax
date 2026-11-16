@@ -11,6 +11,8 @@ services:
       MARIADB_PASSWORD: local-release-password-only
     volumes:
       - release-test-db:/var/lib/mysql
+      - ./tests/release:/suite-tests:ro
+      - ./test-results:/suite-output
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 5s
