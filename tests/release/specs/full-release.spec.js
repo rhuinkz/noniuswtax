@@ -253,6 +253,9 @@ test('07 private files are denied by Apache and PDF template is present', async 
     '/tests/safety-smoke.php',
     '/storage/backups/example.sql',
     '/.git/config',
+    '/compose.release-test.yml',
+    '/.dockerignore',
+    '/.gitignore',
     '/.github/workflows/lint.yml'
   ]) {
     const response = await page.request.get(BASE + path);
