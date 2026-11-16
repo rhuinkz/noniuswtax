@@ -19,6 +19,11 @@ jobs:
         shell: powershell
         run: |
           .\scripts\Build-ReleaseCandidate.ps1
+      - name: Check staged browser test JavaScript syntax
+        shell: pwsh
+        run: |
+          node --check tests/release/candidate-upgrade.cjs
+          node --check tests/release/candidate-rollback.cjs
       - name: Independently verify manifest, version and checksums
         shell: powershell
         run: |
