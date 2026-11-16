@@ -32,3 +32,5 @@ Thumbs.db
 
 # Generated release candidates and evidence are local-only; never commit archives.
 /release-out/
+
+/staging-results/
