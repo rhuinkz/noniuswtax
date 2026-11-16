@@ -365,6 +365,14 @@ function migration_definitions(): array {
                 "ALTER TABLE transactions ADD INDEX tx_school_created_id(school_id,created_at,id)",
             ],
         ],
+        [
+            'id'=>'037_checked_hash_period_guard',
+            'description'=>'Block checked certificate seal changes when the related transaction month is closed, including hash-only database updates.',
+            'optional'=>false,
+            'statements'=>[
+                "CREATE TRIGGER protect_checked_hash_period_update BEFORE UPDATE ON transactions FOR EACH ROW BEGIN DECLARE period_state VARCHAR(16); IF NOT (NEW.checked_snapshot_hash <=> OLD.checked_snapshot_hash) THEN SET period_state=(SELECT state FROM transaction_periods WHERE period_month=DATE_FORMAT(OLD.date,'%Y-%m') AND target_key=IF(OLD.transaction_scope='division','division',CONCAT('school:',OLD.school_id)) LIMIT 1); IF COALESCE(period_state,'') NOT IN ('open','reopened') THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Checked certificate hash cannot change in a closed transaction period'; END IF; END IF; END",
+            ],
+        ],
     ];
 }
 
