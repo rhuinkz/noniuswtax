@@ -12,7 +12,7 @@ if (!is_file($cfgPath)) {
     exit(1);
 }
 $cfg = require $cfgPath;
-if (!is_array($cfg) || ($cfg['db_name'] ?? null) !== 'nonius_release_test') {
+if (!is_array($cfg) || ($cfg['db']['name'] ?? null) !== 'nonius_release_test') {
     fwrite(STDERR, "FAIL: Refusing restoration outside the synthetic database.\n");
     exit(1);
 }
