@@ -1,0 +1,16 @@
+# ADDITIONAL isolation for synthetic installed-site update and rollback rehearsal.
+# No production network or credentials. This override is NOT for deployment.
+services:
+  web:
+    volumes:
+      - candidate-rollback-backups:/var/www/html/storage/backups
+  db:
+    volumes:
+      - candidate-rollback-backups:/staging-backups:ro
+      - ./staging-results:/suite-output
+  browser:
+    volumes:
+      - ./release-out:/suite/candidate:ro
+      - ./staging-results:/suite/output
+volumes:
+  candidate-rollback-backups: {}
