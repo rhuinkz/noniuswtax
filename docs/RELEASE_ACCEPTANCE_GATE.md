@@ -36,11 +36,11 @@ A local Windows Docker test of review-branch commit `12686f0dd4a93484f32e2e31344
 
 **Decision: automated synthetic local smoke gate PASS; production release remains NOT APPROVED.**
 
-## Expanded single-command verification (new candidate — awaiting local execution)
+## Earlier expanded-suite development and testing history
 
 The previous 10/10 Playwright smoke result (2026-11-16, commit `12686f0dd4a93484f32e2e3134496edad9d3382e`) remains recorded below. A newer package now combines **tax arithmetic golden cases, actual application Form 2307 PDF generation with PNG visual-review artifact, 10,000 synthetic transactions with 30-request latency sample, and full disposable SQL backup/restore with trigger tamper checks** with the earlier smoke tests.
 
-When a fresh local run completes, the single `test-results/release-report.html` and `release-summary.json` provide automated PASS/FAIL evidence. **The newly expanded suite has not yet been run on the owner's Windows Docker installation.** Keep its technical gate PENDING until that run, and keep the independent BIR/printed form, migration of an existing installation, Hostinger security, target-capacity and authorized release gates PENDING regardless of the automated result.
+When a fresh local run completes, the single `test-results/release-report.html` and `release-summary.json` provide automated PASS/FAIL evidence. **Historical note:** the extended suite was not yet run at the time of this earlier entry. The subsequent full PASS result is recorded below. Independent BIR/printed-form, existing-install migration, Hostinger security, target capacity and release-authorization gates remain pending.
 
 ## Expanded local package — latest owner run (2026-11-16)
 
@@ -51,7 +51,24 @@ The user-provided Windows Docker log for the **expanded** release package confir
 - Backup/restore stage: **NOT TESTED** because the host's Windows CRLF checkout prevented Linux Bash from parsing `set -Eeuo pipefail` in the mounted test script. The script did not reach any database backup/restore assertions.
 - Reporting stage: emitted FAIL for the full package and PENDING for production authorization, correctly reflecting the incomplete recovery check.
 
-A follow-up review-branch fix now normalizes CRLF in memory before invoking the backup/restore script and adds `.gitattributes` for LF shell files plus CI regression checks. **The complete expanded package still requires another local execution** to verify database recovery. The successful 12/12 tests are not evidence that backup/restore or production readiness passed.
+A follow-up review-branch fix now normalizes CRLF in memory before invoking the backup/restore script and adds `.gitattributes` for LF shell files plus CI regression checks. **Historical note:** the recovery test was blocked in that run. The subsequent full run shown below has verified synthetic backup/restore. This does not establish production readiness.
+
+## Full expanded package — final local automated evidence (2026-11-16)
+
+The application owner supplied `release-summary.json` generated **2026-11-16T06:22:56.082Z** from the expanded Windows Docker suite. Reported automated verification is **PASS** across all five technical categories; production release remains **PENDING_MANUAL_APPROVAL**.
+
+| Check | Reported result |
+|---|---|
+| Browser/API/integrity workflows | 12 Playwright tests passed, 0 failed, 0 skipped |
+| Source and mechanical financial arithmetic | PASS (source checks and synthetic golden cases); BIR correctness not certified |
+| Actual Form 2307 generated PDF and preview PNG | PASS (artifacts generated); human layout/TIN/amount/signature visual approval pending |
+| Synthetic MariaDB backup and restore | PASS: 10,003/10,003 transactions, 6/6 audit events, 37/37 migrations and 15/15 database triggers restored |
+| Integrity protection after restore | PASS: append-only audit and closed-month guard tests |
+| Synthetic data and concurrency probe | PASS: 10,000 records, 30 concurrent HTTP requests, p95 **4,011 ms** (max 4,032 ms; minimum 62 ms) |
+
+**Evidence provenance:** user-provided consolidated JSON, with HTML/Playwright and rendered PDF artifacts retained on their local machine. The JSON did **not** identify the exact tested Git commit; verify commit SHA from GitHub Desktop/PowerShell and archive the full reports and PDF before an official release decision.
+
+**Automated disposable local integration gate: PASS.** This is not equivalent to acceptance of production capacity (only one browser session and 30 requests), live Hostinger controls, an upgrade/rollback on a real sanitized database clone, or external tax compliance. All official production sign-offs in the table above remain PENDING.
 
 ## Release evidence template
 
