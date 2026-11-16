@@ -404,7 +404,53 @@ test('09 real API workflow: School draft, submit, certificate and Division check
   }
 });
 
-test('10 simultaneous local dashboard reads complete and report response-time samples', async ({ page }) => {
+
+test('10 actual rendered Form 2307 downloads as valid PDF and produces visual preview', async ({ page }) => {
+  const db = await database();
+  let id;
+  try {
+    const [rows] = await db.execute(
+      "SELECT id FROM transactions WHERE status='checked' AND id NOT LIKE 'synthetic-%' ORDER BY created_at DESC LIMIT 1"
+    );
+    expect(rows.length, 'School-to-Division smoke created a checked record').toBe(1);
+    id = rows[0].id;
+  } finally {
+    await db.end();
+  }
+  await signIn(page, OWNER_USER, OWNER_PASSWORD);
+  await page.goto('/index.php');
+  // Production uses a CDN. Inject the identical pinned library from npm so this
+  // test exercises the actual application PDF generation logic without Internet.
+  await page.addScriptTag({ path: require.resolve('pdf-lib/dist/pdf-lib.min.js') });
+  await page.locator('#nav [data-view="Transactions"]').click();
+  const detail = page.locator('.tx-detail[data-id="' + id + '"]');
+  await expect(detail).toBeVisible();
+  await detail.click();
+  await expect(page.locator('#downloadPdf')).toBeVisible();
+  const downloadPromise = page.waitForEvent('download', { timeout: 60000 });
+  await page.locator('#downloadPdf').click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^2307-.+\.pdf$/);
+  const target = '/suite/output/bir2307-rendered-synthetic.pdf';
+  await download.saveAs(target);
+  const bytes = fs.readFileSync(target);
+  expect(bytes.length).toBeGreaterThan(10000);
+  expect(bytes.subarray(0, 5).toString('ascii')).toBe('%PDF-');
+  const { PDFDocument } = require('pdf-lib');
+  const doc = await PDFDocument.load(bytes);
+  expect(doc.getPageCount()).toBeGreaterThanOrEqual(1);
+  expect(doc.getSubject()).toContain('transaction:');
+  const { spawnSync } = require('child_process');
+  const preview = spawnSync('pdftoppm', [
+    '-f', '1', '-singlefile', '-scale-to', '1200', '-png',
+    target, '/suite/output/bir2307-visual-review'
+  ], { encoding: 'utf8', timeout: 60000 });
+  expect(preview.status, 'PDF preview generation: ' + (preview.stderr || '')).toBe(0);
+  expect(fs.statSync('/suite/output/bir2307-visual-review.png').size).toBeGreaterThan(10000);
+  console.log('Form 2307 rendered PDF and review image: test-results/bir2307-rendered-synthetic.pdf and test-results/bir2307-visual-review.png');
+});
+
+test('11 simultaneous local dashboard reads complete and report response-time samples', async ({ page }) => {
   await signIn(page, OWNER_USER, OWNER_PASSWORD);
   const timings = await Promise.all(Array.from({ length: 15 }, async () => {
     const start = Date.now();
