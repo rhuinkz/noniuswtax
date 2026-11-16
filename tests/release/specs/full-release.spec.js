@@ -65,7 +65,8 @@ async function mustFailSql(connection, sql, params, label) {
   expect(rejected, label).toBe(true);
 }
 
-test.describe.configure({ mode: 'serial' });
+// One worker and file order preserve fixture dependencies, while non-serial
+// execution still runs remaining checks after a failure for a fuller report.
 // Keep core browser tests usable offline; BIR PDF rendering still requires its
 // separately approved asset/dependency check before production deployment.
 test.beforeEach(async ({ page }) => {
