@@ -7,6 +7,10 @@ Options -Indexes
   Require all denied
 </FilesMatch>
 RewriteEngine On
+# Block Git internals, CI configuration, internal tests, and private documentation
+# when the repository itself is copied under a public web document root.
+RewriteRule ^(?:\.git(?:/|$)|\.github(?:/|$)|tests(?:/|$)|docs(?:/|$)|vendor(?:/|$)|node_modules(?:/|$)) - [F,L,NC]
+RewriteRule ^(?:\.env(?:\..*)?|config\.[^/]*\.php)$ - [F,L,NC]
 RewriteRule ^(?:lib|storage|bin)/ - [F,L,NC]
 <IfModule mod_headers.c>
   Header always set X-Content-Type-Options "nosniff"
