@@ -21,5 +21,14 @@ jobs:
           php tests/safety-smoke.php
           php tests/sql-guard-smoke.php
           php tests/source-policy.php
+      - name: Verify Linux shell scripts and CRLF recovery
+        shell: bash
+        run: |
+          bash -n tests/release/run-all.sh
+          bash -n tests/release/backup-restore.sh
+          tmp=$(mktemp)
+          sed 's/$/\r/' tests/release/backup-restore.sh > "$tmp"
+          tr -d '\015' < "$tmp" | bash -n
+          rm "$tmp"
       - name: Check JS syntax
         run: node --check assets/app.js && node --check assets/login-slideshow.js && node --check tests/release/specs/full-release.spec.js && node --check tests/release/playwright.config.cjs && node --check tests/release/report.cjs
