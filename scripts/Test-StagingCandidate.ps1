@@ -12,7 +12,7 @@ if (!(Test-Path -LiteralPath $candidate)) { throw "Missing built candidate ZIP: 
 # Fail before starting Docker if ZIP, version, source SHA or any file hash differs.
 & (Join-Path $PSScriptRoot 'Verify-ReleaseCandidate.ps1') -PackagePath $candidate
 New-Item -ItemType Directory -Force -Path $results | Out-Null
-foreach ($name in @('results.json','staging-upgrade.json','staging-rollback.json','staging-summary.json')) {
+foreach ($name in @('results.json','staging-upgrade.json','staging-rollback.json','staging-summary.json','candidate-runtime-diagnostic.json')) {
     $f = Join-Path $results $name
     if (Test-Path -LiteralPath $f) { Remove-Item -LiteralPath $f -Force }
 }
@@ -42,8 +42,28 @@ try {
     Run-Docker ($baseArgs + @('run', '--rm', 'browser'))
     $playwrightOk = $true
     Write-Host 'STAGING 2/3: Upload, review and install EXACT verified RC ZIP...' -ForegroundColor Cyan
-    Run-Docker ($baseArgs + @('run', '--rm', '--no-deps', 'browser', 'node', '/suite/candidate-upgrade.cjs'))
-    $upgradeOk = $true
+    # Record the file actually installed in the disposable web container.
+    # Run this on success AND failure before cleanup erases the containers.
+    $upgradeError = $null
+    try {
+        Run-Docker ($baseArgs + @('run', '--rm', '--no-deps', 'browser', 'node', '/suite/candidate-upgrade.cjs'))
+        $upgradeOk = $true
+    } catch {
+        $upgradeError = $_.Exception.Message
+        Write-Host ('UPGRADE VERIFICATION FAILED: ' + $upgradeError) -ForegroundColor Red
+    }
+    $diagnosticArgs = $baseArgs + @('exec', '-T', 'web', 'php', 'tests/release/candidate-diagnostic.php')
+    $diagnosticOutput = (& docker @diagnosticArgs | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0) { throw 'On-disk staging version diagnostic failed; see Docker console.' }
+    Set-Content -LiteralPath (Join-Path $results 'candidate-runtime-diagnostic.json') -Value $diagnosticOutput
+    $installed = $diagnosticOutput | ConvertFrom-Json
+    Write-Host ('Installed on-disk version: ' + $installed.disk_bootstrap_version)
+    Write-Host ('Update manifest version: ' + $installed.on_disk_update_manifest_version)
+    if ($installed.disk_bootstrap_version -ne '0.4.57-rc.1' -or
+        $installed.on_disk_update_manifest_version -ne '0.4.57-rc.1') {
+        throw 'The staging updater did not persist the candidate on disk; refusing to treat this as a cache-only issue.'
+    }
+    if (!$upgradeOk) { throw ('Staging upgrade failed even though updated files are present: ' + $upgradeError) }
     Write-Host 'STAGING 3/3: Restore original code + updater-created pre-upgrade DB backup...' -ForegroundColor Cyan
     Run-Docker ($baseArgs + @('exec', '-T', 'web', 'php', 'tests/release/candidate-restore-code.php'))
     $codeRestoreOk = $true
@@ -93,5 +113,5 @@ if ($allOk) {
     Write-Host 'Still NOT approved for any production deployment.' -ForegroundColor Yellow
     exit 0
 }
-Write-Host 'FAIL: Read staging-results/staging-upgrade.json and staging-rollback.json (when generated).' -ForegroundColor Red
+Write-Host 'FAIL: Read staging-results/staging-upgrade.json and candidate-runtime-diagnostic.json (when generated).' -ForegroundColor Red
 exit 1
