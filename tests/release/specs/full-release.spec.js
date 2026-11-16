@@ -370,6 +370,7 @@ test('09 real API workflow: School draft, submit, certificate and Division check
   const cannotCheck = await postApi(page, school.csrf, 'check', { id: created.id, version: 2 });
   expect(cannotCheck.status()).toBeGreaterThanOrEqual(400);
 
+  await page.goto('/logout.php');
   await signIn(page, OWNER_USER, OWNER_PASSWORD);
   const owner = await bootstrap(page);
   const check = await postApi(page, owner.csrf, 'check', {
