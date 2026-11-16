@@ -66,7 +66,7 @@ The application owner supplied `release-summary.json` generated **2026-11-16T06:
 | Integrity protection after restore | PASS: append-only audit and closed-month guard tests |
 | Synthetic data and concurrency probe | PASS: 10,000 records, 30 concurrent HTTP requests, p95 **4,011 ms** (max 4,032 ms; minimum 62 ms) |
 
-**Evidence provenance:** user-provided consolidated JSON, with HTML/Playwright and rendered PDF artifacts retained on their local machine. The JSON did **not** identify the exact tested Git commit; verify commit SHA from GitHub Desktop/PowerShell and archive the full reports and PDF before an official release decision.
+**Evidence provenance:** user-provided consolidated JSON, with HTML/Playwright and rendered PDF artifacts retained on their local machine. The user subsequently ran `git rev-parse HEAD` in the local NONIUSWTAX repository and confirmed the **tested source commit `adf3fb4bdce027f65c2a18de2ca4d94e8424e35f`**. Archive the full reports and PDF before an official release decision. Subsequent review-branch documentation commits are not covered by this test run.
 
 **Automated disposable local integration gate: PASS.** This is not equivalent to acceptance of production capacity (only one browser session and 30 requests), live Hostinger controls, an upgrade/rollback on a real sanitized database clone, or external tax compliance. All official production sign-offs in the table above remain PENDING.
 
