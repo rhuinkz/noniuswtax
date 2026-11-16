@@ -26,7 +26,7 @@ The scripts build the images, start a disposable database and test app, run PHP/
 | Security | CSRF rejection, unsafe owner SQL denied, internal URLs blocked, append-only audit and transaction deletion |
 | School isolation | School A cannot read School B transaction, edit School B profile or use owner SQL console |
 | PDF | Bundled BIR 2307 template has PDF signature and HTTP access, not a visual approval |
-| Browser/concurrency | Login and app bootstrap, 15 simultaneous API reads with reported p95; not a capacity benchmark |
+| Browser/concurrency | School draft, submit, frozen certificate, Division check; 15 simultaneous API reads with reported p95; not a capacity benchmark |
 
 Spec: `tests/release/specs/full-release.spec.js`.
 
