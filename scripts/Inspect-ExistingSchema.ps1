@@ -64,7 +64,7 @@ if (Test-Path -LiteralPath $outFile) { Remove-Item -LiteralPath $outFile -Force 
 $env:NONIUS_SCHEMA_SQL_PATH = $src
 $compose = @('compose','-p','nonius-existing-schema-preflight',
              '-f','compose.existing-schema-preflight.yml')
-$cli = 'MYSQL_PWD="$DB_PASS" mariadb --host="$DB_HOST" --user="$DB_USER" "$DB_NAME"'
+$cli = 'MYSQL_PWD="$DB_PASS" mariadb --batch --skip-column-names --host="$DB_HOST" --user="$DB_USER" "$DB_NAME"'
 function InvokeDocker([string[]]$argsList) {
     & docker @argsList
     if ($LASTEXITCODE -ne 0) { throw ('Docker command failed: exit code ' + $LASTEXITCODE) }
