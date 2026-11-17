@@ -34,3 +34,7 @@ Thumbs.db
 /release-out/
 
 /staging-results/
+
+# Structural reports and local private exports never belong in Git.
+/schema-preflight-results/
+/local-private/
