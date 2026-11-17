@@ -20,3 +20,10 @@ RewriteRule ^(?:lib|storage|bin)/ - [F,L,NC]
   Header always set X-Frame-Options "SAMEORIGIN"
   Header always set Permissions-Policy "geolocation=(), camera=(), microphone=()"
 </IfModule>
+
+# Hide offline schema-preflight infrastructure and local structural reports.
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteRule ^(?:schema-preflight-results|local-private)(?:/|$) - [F,L,NC]
+RewriteRule ^compose\.existing-schema-preflight\.yml$ - [F,L,NC]
+</IfModule>
