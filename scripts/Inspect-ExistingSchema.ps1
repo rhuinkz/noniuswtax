@@ -82,8 +82,7 @@ try {
         'inspector','-ec',($cli + ' < /inspection/input.sql')))
     Write-Host 'Collecting tables, columns, foreign keys, indexes and triggers only...'
     $cmd = $compose + @('run','--rm','--no-deps','-T','--entrypoint','sh',
-        'inspector','-ec',($cli +
-        ' --batch --skip-column-names < /inspection/report.sql'))
+        'inspector','-ec',($cli + ' < /inspection/report.sql'))
     $stdout = & docker @cmd
     if ($LASTEXITCODE -ne 0) { throw 'Schema report query failed.' }
     $jsonLines = @($stdout | Where-Object { $_ -match '^\s*\{' })
