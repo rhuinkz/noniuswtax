@@ -23,26 +23,47 @@ jobs:
         run: |
           cp tests/release/fixtures/existing-schema-structure-only.sql /tmp/nonius-fixture.sql
           NONIUS_SCHEMA_SQL_PATH=/tmp/nonius-fixture.sql docker compose -f compose.existing-schema-preflight.yml config --quiet
+      - name: Parse PowerShell script without executing any user SQL
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path ./scripts/Inspect-ExistingSchema.ps1).Path,
+            [ref]$tokens, [ref]$parseErrors) | Out-Null
+          if ($parseErrors.Count -gt 0) {
+            $parseErrors | ForEach-Object { Write-Error $_.Message }
+            throw 'PowerShell schema inspector failed syntax validation'
+          }
       - name: Refuse a data-bearing SQL export before Docker starts
         shell: bash
         run: |
           cp tests/release/fixtures/existing-schema-structure-only.sql /tmp/nonius-with-data.sql
           printf "\nINSERT INTO schools(id,name,data) VALUES('id','sensitive','{}');\n" >> /tmp/nonius-with-data.sql
-          if pwsh -NoProfile -File ./scripts/Inspect-ExistingSchema.ps1 -SchemaSqlPath /tmp/nonius-with-data.sql; then
-            echo "FAIL: inspector accepted inserted records"
+          set +e
+          error=$(pwsh -NoProfile -File ./scripts/Inspect-ExistingSchema.ps1 -SchemaSqlPath /tmp/nonius-with-data.sql 2>&1)
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ] || ! grep -q 'Possible data-bearing SQL' <<< "$error"; then
+            echo "FAIL: expected refusal of application data, not a syntax/runtime error"
             exit 1
           fi
-          echo "PASS: structure-only gate refused application data"
+          echo "PASS: structure-only guard refused application data"
       - name: Refuse a disguised row insertion after isolated import
         shell: bash
         run: |
           cp tests/release/fixtures/existing-schema-structure-only.sql /tmp/nonius-disguised-row.sql
           printf "\n/* Comment */ INSERT INTO schools(id,name,data) VALUES('id','do-not-export','{}');\n" >> /tmp/nonius-disguised-row.sql
-          if pwsh -NoProfile -File ./scripts/Inspect-ExistingSchema.ps1 -SchemaSqlPath /tmp/nonius-disguised-row.sql; then
-            echo "FAIL: non-empty source database was accepted as structure only"
+          set +e
+          error=$(pwsh -NoProfile -File ./scripts/Inspect-ExistingSchema.ps1 -SchemaSqlPath /tmp/nonius-disguised-row.sql 2>&1)
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ] || ! grep -q 'One or more tables contains actual rows' <<< "$error"; then
+            echo "FAIL: expected zero-row refusal, got a different error"
+            echo "$error"
             exit 1
           fi
-          echo "PASS: zero-row inspection refused disguised application data"
+          echo "PASS: zero-row guard rejected a disguised inserted record"
       - name: Import synthetic schema in isolated Docker and generate metadata-only report
         shell: bash
         run: |
