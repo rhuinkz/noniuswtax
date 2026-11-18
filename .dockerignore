@@ -32,3 +32,5 @@ release-out
 # Never include private source SQL or reports in application Docker images.
 schema-preflight-results
 local-private
+
+existing-compat-results
