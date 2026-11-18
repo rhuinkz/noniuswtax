@@ -1,0 +1,55 @@
+# PRIVATE NONIUSWTAX database recovery. No website service, no host ports,
+# no network egress from DB or the importer. Import reads a local SQL file
+# mounted read-only from OUTSIDE this Git repository.
+name: nonius-private-recovery
+services:
+  db:
+    image: mariadb:11.4
+    restart: "no"
+    environment:
+      MARIADB_ROOT_PASSWORD: nonius-local-restore-root-only
+      MARIADB_DATABASE: nonius_private_restore
+      MARIADB_USER: nonius_private_import
+      MARIADB_PASSWORD: nonius-local-restore-only
+    volumes:
+      - isolated-private-db:/var/lib/mysql
+    networks: [privateonly]
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 20s
+  inspector:
+    image: mariadb:11.4
+    restart: "no"
+    profiles: ["manual"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_HOST: db
+      DB_NAME: nonius_private_restore
+      DB_USER: nonius_private_import
+      DB_PASS: nonius-local-restore-only
+    volumes:
+      - type: bind
+        source: ${NONIUS_PRIVATE_SQL_PATH:?Provide the external private SQL export path}
+        target: /private/input.sql
+        read_only: true
+      - type: bind
+        source: ./tests/release/private-backup-restore-report.ddl
+        target: /private/report.sql
+        read_only: true
+      - type: bind
+        source: ./tests/release/private-backup-foreign-keys.ddl
+        target: /private/foreign-keys.sql
+        read_only: true
+    networks: [privateonly]
+    read_only: true
+    tmpfs: [/tmp]
+networks:
+  privateonly:
+    internal: true
+volumes:
+  isolated-private-db: {}
