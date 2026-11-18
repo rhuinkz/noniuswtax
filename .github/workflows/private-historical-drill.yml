@@ -5,6 +5,8 @@ on:
       - 'compose.private-historical-drill.yml'
       - 'scripts/Run-PrivateHistoricalDrill.ps1'
       - 'tests/release/private-historical-check.php'
+      - 'scripts/Check-FinalGoNoGo.ps1'
+      - 'docs/production-approval.template.json'
       - '.github/workflows/private-historical-drill.yml'
       - 'docs/FINAL_PRODUCTION_READINESS_PLAN.md'
   workflow_dispatch:
@@ -22,6 +24,7 @@ jobs:
         shell: bash
         run: |
           php -l tests/release/private-historical-check.php
+          pwsh -NoProfile -Command '$t=$null;$e=$null;[System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path scripts/Check-FinalGoNoGo.ps1).Path,[ref]$t,[ref]$e)|Out-Null;if($e.Count){throw "GO checker parse failed"}'
           pwsh -NoProfile -Command '
             $tokens=$null; $errors=$null
             [System.Management.Automation.Language.Parser]::ParseFile(
@@ -73,6 +76,25 @@ jobs:
           "${compose[@]}" up -d --wait db
           "${compose[@]}" run --rm --no-deps --entrypoint sh importer -ec 'MYSQL_PWD="$DB_PASS" mariadb --host="$DB_HOST" --user="$DB_USER" --database="$DB_NAME" < /private/input.sql'
           echo 'PASS: fictional SQL imported under a least-privilege test DB user'
+      - name: Verify final release decision fails closed without actual signed evidence
+        shell: bash
+        run: |
+          set +e
+          pwsh -NoProfile -File ./scripts/Check-FinalGoNoGo.ps1 \
+            -AcceptanceSummaryPath /tmp/not-existing-acceptance.json \
+            -PrivateHistoricalSummaryPath /tmp/not-existing-history.json \
+            -ApprovalRecordPath docs/production-approval.template.json
+          code=$?
+          set -e
+          if [ "$code" -ne 2 ]; then echo "FAIL: missing approvals did not produce NO-GO"; exit 1; fi
+          node - <<'NODE'
+          const r=require(process.cwd()+'/private-release-evidence/final-gate-report.json');
+          if(r.decision!=='NO_GO_BLOCKED_BY_OUTSTANDING_GATES' ||
+             r.executable_deployment_performed!==false ||
+             r.out_of_band_signatures_cryptographically_verified!==false ||
+             r.approved_manual_gates!==0) throw Error('False production GO');
+          console.log('PASS: no technical evidence and unsigned approval template cannot authorize production');
+          NODE
       - name: Run isolated local historical import, migration 037, and full restore
         shell: bash
         run: |
