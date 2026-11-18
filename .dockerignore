@@ -34,3 +34,6 @@ schema-preflight-results
 local-private
 
 existing-compat-results
+
+# Never put local acceptance results or logs in web/container contexts.
+acceptance-results
