@@ -1,0 +1,15 @@
+# Run the existing full Playwright suite using ONLY synthetic records,
+# then compare the fresh schema with a read-only metadata JSON report.
+# Never bind-mount the private source SQL export or a real database dump.
+services:
+  browser:
+    volumes:
+      - type: bind
+        source: ${NONIUS_SCHEMA_REPORT_PATH:?Set path to the local metadata-only JSON report}
+        target: /suite/existing-schema-report.json
+        read_only: true
+      - ./existing-compat-results:/suite/output
+  # Prevent external connectivity from the test network.
+networks:
+  testnet:
+    internal: true
