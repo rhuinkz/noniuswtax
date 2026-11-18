@@ -3,6 +3,12 @@ on:
   pull_request:
     paths:
       - 'compose.existing-schema-preflight.yml'
+      - 'compose.existing-schema-compare.yml'
+      - 'scripts/Test-ExistingSchemaDockerPlaywright.ps1'
+      - 'tests/release/schema-compare-core.cjs'
+      - 'tests/release/schema-compare-unit.cjs'
+      - 'tests/release/compare-existing-schema.cjs'
+      - 'tests/release/Dockerfile.browser'
       - 'scripts/Inspect-ExistingSchema.ps1'
       - 'tests/release/existing-schema-report.ddl'
       - 'tests/release/existing-schema-no-rows.ddl'
@@ -35,6 +41,38 @@ jobs:
             $parseErrors | ForEach-Object { Write-Error $_.Message }
             throw 'PowerShell schema inspector failed syntax validation'
           }
+      - name: Check Playwright schema-comparison code and drift cases
+        shell: bash
+        run: |
+          node --check tests/release/compare-existing-schema.cjs
+          node --check tests/release/schema-compare-core.cjs
+          node --check tests/release/schema-compare-unit.cjs
+          node tests/release/schema-compare-unit.cjs
+      - name: Check local-only Docker+Playwright comparison runner and isolated mounts
+        shell: bash
+        run: |
+          pwsh -NoProfile -Command '
+            $tokens = $null; $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path ./scripts/Test-ExistingSchemaDockerPlaywright.ps1).Path,
+              [ref]$tokens,[ref]$errors) | Out-Null
+            if($errors.Count){$errors | ForEach-Object {Write-Error $_.Message};exit 1}
+          '
+          printf '{}' > /tmp/schema-comparison-metadata.json
+          NONIUS_SCHEMA_REPORT_PATH=/tmp/schema-comparison-metadata.json docker compose -f compose.release-test.yml -f compose.existing-schema-compare.yml config --format json > /tmp/schema-compose.json
+          node - <<'NODE'
+          const d = require('/tmp/schema-compose.json');
+          const mounts = d.services.browser.volumes;
+          const schema=mounts.find(v=>v.target==='/suite/existing-schema-report.json');
+          const out=mounts.find(v=>v.target==='/suite/output');
+          if(!schema || schema.read_only!==true || !out ||
+             !out.source.endsWith('/existing-compat-results') ||
+             d.networks.testnet.internal!==true ||
+             d.services.db.ports?.length) {
+            throw new Error('Local-only schema comparison mount, output or internal network is unsafe');
+          }
+          console.log('PASS: metadata-only read-only bind, isolated output and internal test network');
+          NODE
       - name: Refuse a data-bearing SQL export before Docker starts
         shell: bash
         run: |
