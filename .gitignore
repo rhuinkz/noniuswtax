@@ -38,3 +38,6 @@ Thumbs.db
 # Structural reports and local private exports never belong in Git.
 /schema-preflight-results/
 /local-private/
+
+# Generated Docker/Playwright installed-schema comparison is local-only.
+/existing-compat-results/
