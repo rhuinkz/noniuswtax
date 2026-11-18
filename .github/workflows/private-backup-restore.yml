@@ -1,0 +1,129 @@
+name: Private R1 backup restoration rehearsal (FICTIONAL DATA ONLY)
+on:
+  pull_request:
+    paths:
+      - 'compose.private-backup-restore.yml'
+      - 'scripts/Test-PrivateHistoricalBackupRestore.ps1'
+      - 'tests/release/private-backup-restore-report.ddl'
+      - 'tests/release/private-backup-foreign-keys.ddl'
+      - '.github/workflows/private-backup-restore.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-private-restore-fixture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax and Docker isolation assertions
+        shell: pwsh
+        run: |
+          $tokens=$null; $errors=$null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path ./scripts/Test-PrivateHistoricalBackupRestore.ps1).Path,
+            [ref]$tokens,[ref]$errors) | Out-Null
+          if($errors.Count){$errors|ForEach-Object{Write-Error $_.Message};throw 'Restore script syntax failed'}
+      - name: Generate completely fictional 21-table, 177-column, 14-trigger data and code archives
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json,zipfile,gzip,tarfile,os,io
+          os.makedirs('schema-preflight-results',exist_ok=True)
+          core=['transactions','schema_migrations','transaction_history','audit','transaction_periods','transaction_period_history','update_history']
+          extra=[f'dummy{i:02d}' for i in range(1,15)]
+          tables=core+extra
+          cols={name:['id VARCHAR(64) PRIMARY KEY'] for name in tables}
+          cols['schema_migrations']=['id VARCHAR(100) PRIMARY KEY','status VARCHAR(20) NOT NULL']
+          cols['transactions']=['id VARCHAR(64) PRIMARY KEY','checked_snapshot_hash CHAR(64) NULL']+[f'fake_col_{i:03d} VARCHAR(50) NULL' for i in range(154)]
+          assert sum(len(c) for c in cols.values()) == 177
+          ddl=['CREATE TABLE '+name+' ('+','.join(cols[name])+') ENGINE=InnoDB;' for name in tables]
+          for i,name in enumerate(extra,1):
+              ddl.append(f'CREATE TRIGGER fake_guard_{i:02d} BEFORE UPDATE ON {name} FOR EACH ROW SET NEW.id=OLD.id;')
+          ddl+=["INSERT INTO transactions (id,checked_snapshot_hash) VALUES ('FICTIONAL-TX','"+"a"*64+"');",
+                "INSERT INTO schema_migrations (id,status) VALUES ('036_example','applied');",
+                "INSERT INTO transaction_history (id) VALUES ('FICTIONAL-HISTORY');",
+                "INSERT INTO audit (id) VALUES ('FICTIONAL-AUDIT');"]
+          sql='\n'.join(ddl)+'\n'
+          with open('/tmp/nonius-fixture.sql','w') as f:f.write(sql)
+          with gzip.open('/tmp/nonius-fixture.sql.gz','wb') as f:f.write(sql.encode())
+          source=['lib/bootstrap.php','lib/migrations.php','update.php','index.php','login.php','api.php',
+                  'assets/style.css','assets/app.js','.htaccess','README.md']
+          with zipfile.ZipFile('/tmp/nonius-fixture-site.zip','w',zipfile.ZIP_DEFLATED) as z:
+              for p in source:z.write(p,p)
+              z.writestr('storage/fake.txt','FICTIONAL NON-SENSITIVE STORAGE')
+          with tarfile.open('/tmp/nonius-fixture-site.tar.gz','w:gz') as tar:
+              for p in source:tar.add(p,arcname=p)
+              b=b'FICTIONAL NON-SENSITIVE STORAGE'
+              info=tarfile.TarInfo('storage/fake.txt');info.size=len(b)
+              tar.addfile(info,io.BytesIO(b))
+          info={'report_type':'SCHEMA_ONLY_NO_PRODUCTION_RECORDS',
+                'schema':{'format':'NONIUS_SCHEMA_PREFLIGHT_V1',
+                          'tables':[{'name':n} for n in tables],
+                          'columns':[{'table':t,'name':c.split()[0]} for t in tables for c in cols[t]],
+                          'triggers':[{'name':f'fake_guard_{i:02d}'} for i in range(1,15)]}}
+          with open('schema-preflight-results/existing-schema-report.json','w') as f:json.dump(info,f)
+          print('PASS: CI fixture has only fictional records and exactly 21/177/14 structural objects.')
+          PY
+      - name: Compose config must have no host ports and be internal-only
+        shell: bash
+        run: |
+          NONIUS_PRIVATE_SQL_PATH=/tmp/nonius-fixture.sql NONIUS_PRIVATE_SQL_FORMAT=plain docker compose -f compose.private-backup-restore.yml config --format json > /tmp/nonius-private-compose.json
+          node - <<'NODE'
+          const d=require('/tmp/nonius-private-compose.json');
+          if(!d.networks.privateonly.internal || d.services.web || d.services.db.ports?.length ||
+             d.services.inspector.volumes.find(v=>v.target==='/private/input.backup')?.read_only!==true){
+              throw Error('Private database importer has unsafe container exposure');
+          }
+          console.log('PASS: internal-only network, read-only input bind, no public web or database ports');
+          NODE
+      - name: Reject forbidden SQL before starting local DB
+        shell: bash
+        run: |
+          cp /tmp/nonius-fixture.sql /tmp/nonius-unsafe.sql
+          printf '\nCREATE DATABASE malicious_not_allowed;\n' >> /tmp/nonius-unsafe.sql
+          set +e
+          pwsh -NoProfile -File ./scripts/Test-PrivateHistoricalBackupRestore.ps1 -FullSqlPath /tmp/nonius-unsafe.sql -WebsiteArchivePath /tmp/nonius-fixture-site.zip
+          exit_code=$?
+          set -e
+          test "$exit_code" -eq 1
+          node - <<'NODE'
+          const r=require('./readiness-results/private-backup-restore-summary.json');
+          if(r.test_status!=='RESTORE_TEST_FAILED'||r.mysql_data_restored_to_disposable_docker!==false ||
+             !r.errors.some(e=>e.includes('Unsupported SQL statement'))) {
+             throw Error('Importer did not refuse database-changing SQL before Docker startup');
+          }
+          console.log('PASS: rejected unsafe CREATE DATABASE export without importing records');
+          NODE
+      - name: Rehearse plain SQL and ZIP complete local-only recovery
+        shell: bash
+        run: |
+          pwsh -NoProfile -File ./scripts/Test-PrivateHistoricalBackupRestore.ps1 -FullSqlPath /tmp/nonius-fixture.sql -WebsiteArchivePath /tmp/nonius-fixture-site.zip
+          node - <<'NODE'
+          const r=require('./readiness-results/private-backup-restore-summary.json');
+          if(r.test_status!=='LOCAL_RESTORE_VERIFIED_R1_SIGNOFF_PENDING'||
+             r.restored_table_count!==21||r.restored_column_count!==177||
+             r.restored_trigger_count!==14||r.restored_migration037_row_count!==0||
+             r.restored_transaction_count!==1||r.total_fk_orphans!==0||
+             r.production_release!=='NO_GO_PENDING_R1_TO_R8'||
+             r.final_r1_review_signed!==false||
+             r.source_backup_point_in_time_consistency_independently_verified!==false){
+              throw Error('Local DB restore not complete or dangerously marked approved');
+          }
+          console.log('PASS: fictional plain SQL+ZIP restored; 21 tables/177 columns/14 triggers, no live data');
+          NODE
+      - name: Rehearse Hostinger compressed SQL.gz and site tar.gz without extraction
+        shell: bash
+        run: |
+          pwsh -NoProfile -File ./scripts/Test-PrivateHistoricalBackupRestore.ps1 -FullSqlPath /tmp/nonius-fixture.sql.gz -WebsiteArchivePath /tmp/nonius-fixture-site.tar.gz
+          node - <<'NODE'
+          const r=require('./readiness-results/private-backup-restore-summary.json');
+          if(r.test_status!=='LOCAL_RESTORE_VERIFIED_R1_SIGNOFF_PENDING'||
+             r.code_archive_version!=='0.4.56'||r.restored_table_count!==21||
+             r.total_fk_orphans!==0||r.final_r1_review_signed!==false){
+              throw Error('Native Hostinger compressed backup restore failed');
+          }
+          console.log('PASS: native compressed backup restore and metadata-only report, never approved production');
+          NODE
