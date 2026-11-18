@@ -45,6 +45,10 @@ After the command finishes:
 
 **Note on live migration status:** The authorized owner ran `SELECT id,status FROM schema_migrations WHERE id='037_checked_hash_period_guard'` against the installed database on **18 November 2026** and reported **zero rows**. This is separate **read-only human evidence**, not a live query or adjustment made by this test package. The missing trigger is consistent with a pending migration, but the actual installed database has not been upgraded.
 
+### GitHub Actions versus your Windows ZIP
+
+The GitHub Linux workflow executes this comprehensive package in a restricted **CI-only cross-platform ZIP mode**. Different .NET ZIP implementations can compress the same pinned source files into different archive bytes; GitHub's Linux CI therefore independently checks the source commit and all manifest file checksums but **does not claim to test the exact Windows candidate ZIP SHA-256**. The default Windows command never enables this mode and **requires** the original Windows ZIP SHA-256 `e8d1fe062073f81d68bd0c2707951a0dcae1543a8d5c1aa0dd074a1e5ccb367a`. Only the Linux GitHub Actions environment can request the special test flag; it is not intended for local use or distribution.
+
 ## Limits and release governance
 
 The one-command package tests **fictional/local records**, not the historical installed business records. It does not certify correct BIR treatment, current 2307 layout, legal rates, live hosting security, real 1,000-user concurrency, or safe migration of personal data. The previously completed synthetic candidate rollback and the new structural check are useful technical evidence, but a **sanitized clone of the actual installed database** and its full rollback rehearsal remain separate approval requirements.
