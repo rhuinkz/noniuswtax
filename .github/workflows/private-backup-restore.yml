@@ -100,7 +100,16 @@ jobs:
       - name: Rehearse plain SQL and ZIP complete local-only recovery
         shell: bash
         run: |
+          set +e
           pwsh -NoProfile -File ./scripts/Test-PrivateHistoricalBackupRestore.ps1 -FullSqlPath /tmp/nonius-fixture.sql -WebsiteArchivePath /tmp/nonius-fixture-site.zip
+          result=$?
+          set -e
+          if [ "$result" -ne 0 ]; then
+            # CI GENERATED FICTIONAL DATA ONLY; never run this diagnostic for live backups.
+            echo "CI synthetic import diagnostic (contains no real records):"
+            cat /tmp/nonius-private-restore-logs/sql-import-private.log || true
+            exit "$result"
+          fi
           node - <<'NODE'
           const r=require('./readiness-results/private-backup-restore-summary.json');
           if(r.test_status!=='LOCAL_RESTORE_VERIFIED_R1_SIGNOFF_PENDING'||
