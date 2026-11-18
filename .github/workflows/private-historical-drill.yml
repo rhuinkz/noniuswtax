@@ -5,6 +5,7 @@ on:
       - 'compose.private-historical-drill.yml'
       - 'scripts/Run-PrivateHistoricalDrill.ps1'
       - 'tests/release/private-historical-check.php'
+      - 'tests/release/normalize-private-trigger-definers.sed'
       - 'scripts/Check-FinalGoNoGo.ps1'
       - 'docs/production-approval.template.json'
       - '.github/workflows/private-historical-drill.yml'
@@ -74,7 +75,7 @@ jobs:
           compose=(docker compose -p nonius-fake-import-diagnostic -f compose.private-historical-drill.yml)
           trap '"${compose[@]}" down --volumes --remove-orphans' EXIT
           "${compose[@]}" up -d --wait db
-          "${compose[@]}" run --rm --no-deps --entrypoint sh importer -ec 'MYSQL_PWD="$DB_PASS" mariadb --host="$DB_HOST" --user="$DB_USER" --database="$DB_NAME" < /private/input.sql'
+          "${compose[@]}" run --rm --no-deps --entrypoint sh importer -ec 'sed -E -f /private/normalize-trigger-definers.sed /private/input.sql | MYSQL_PWD="$DB_PASS" mariadb --host="$DB_HOST" --user="$DB_USER" --database="$DB_NAME"'
           echo 'PASS: fictional SQL imported under a least-privilege test DB user'
       - name: Verify final release decision fails closed without actual signed evidence
         shell: bash
