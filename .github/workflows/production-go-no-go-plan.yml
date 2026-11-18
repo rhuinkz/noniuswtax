@@ -68,9 +68,13 @@ jobs:
           // FAKE RECORDS ONLY in a temp directory; no actual approval exists.
           fs.writeFileSync('/tmp/nonius-fixture-review.json',JSON.stringify(r));
           NODE
+          set +e
           pwsh -NoProfile -File ./scripts/Assess-ProductionReadiness.ps1 -EvidencePath /tmp/nonius-fixture-review.json
+          expected_ready_exit=$?
+          set -e
           node - <<'NODE'
           const r=require('./readiness-results/release-readiness-assessment.json');
+          if(r.automated_assessment!=='READY_FOR_FORMAL_GO_DECISION') console.error('Fictional evidence blockers:',JSON.stringify(r.blockers));
           if(r.automated_assessment!=='READY_FOR_FORMAL_GO_DECISION'||
              r.deployment_authorized_by_this_script!==false||
              r.reviewer_signatures_cryptographically_verified!==false){
