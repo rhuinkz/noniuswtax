@@ -16,6 +16,14 @@ The owner completed the consolidated local Windows test on 18 November 2026:
 
 **Current release decision: NO-GO / DEFER.** Existing automated tests cover the source and a disposable synthetic site. They do not satisfy historical upgrade, tax-law, deployment capacity, hosting security or sign-off gates.
 
+### Read-only hosting inventory and R1 tool prepared (2026-11-18)
+
+The connected Hostinger website is `noniuswtax.depedtagb.online`. Read-only Hostinger checks show **PHP 8.2.35** (candidate requires minimum **8.2.0**), `nd_pdo_mysql`, `mbstring`, `gd`, `zip` enabled, SSL active, HTTPS redirect enabled, CDN enabled and server-side cache disabled. `expose_php` is enabled and will be examined under security gate R6; no changes were made. Hosting settings alone do not confirm the **deployed source version/DB vendor/data consistency**.
+
+Added `scripts/Test-PrivateHistoricalBackupRestore.ps1` and `compose.private-backup-restore.yml`. The tool reads a locally held full SQL (`.sql` or `.sql.gz`) and installed-site archive (`.zip` or `.tar.gz`) from **outside the Git repository**, checks source ZIP/TAR structure **without unpacking real contents**, and imports actual backup records **only into an ephemeral isolated local MariaDB** with read-only input mount, internal-only network and no website service or host ports. It reports aggregate counts, 14 triggers / no 037 migration row, foreign-key orphan counts and code archive version, then deletes **only its private test volume**. The script never contacts Hostinger or modifies production.
+
+**All four workflows PASS**, including dedicated CI that executed both plain and Hostinger-compressed formats using **fictional 21-table/177-column/14-trigger records** and verified fail-closed rejection of unsafe SQL. See `docs/HISTORICAL_R1_BACKUP_RESTORE.md`. The owner's real full historical backup has **NOT been imported or tested yet**; R1 remains pending independent backup provenance, point-in-time consistency, encrypted duplicate and authorized recovery sign-off. Deleted Docker volumes are **not cryptographic secure erasure**; operator must use institutional disk encryption.
+
 ## 1. The single coordinated rehearsal: high-level flow
 
 One **coordinated release-acceptance window** after all private inputs and reviewers are ready; *not* a series of ad hoc production SQL experiments. Individual diagnostic reruns are allowed **only after a failed gate**; any code/DB migration change invalidates affected evidence and mandates repeat of the integrated window on an updated pinned artifact.
