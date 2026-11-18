@@ -58,6 +58,8 @@ try {
     Write-Host 'STAGE 2/2: Compare table, column, key, index and trigger metadata...' -ForegroundColor Cyan
     RunDocker ($compose + @('run','--rm','--no-deps','browser','node','/suite/compare-existing-schema.cjs'))
     $comparisonGenerated = $true
+} catch {
+    Write-Host ('TEST ERROR: '+$_.Exception.Message) -ForegroundColor Red
 } finally {
     Write-Host 'Removing ONLY the disposable nonius-existing-compatibility Docker containers and volume...' -ForegroundColor Yellow
     $cleanup = $compose + @('down','--volumes','--remove-orphans')
