@@ -34,6 +34,8 @@ Replace the example path with the actual local file. This intentionally requires
 
 The script loads the original backup into dedicated Docker MariaDB 11.4. It does **not** run Apache, publish ports, or connect to Hostinger. It checks all 21 tables/177 columns/14 triggers and exactly migration 037 pending, fingerprints each table privately in a Docker-only volume, applies the ordinary source migration 037, verifies all business-table fingerprints unchanged and 15 triggers, restores the original snapshot into an independent temporary DB, and compares original table digests. All containers and named volumes are deleted afterward. **The original encrypted backup remains your responsibility** and is not deleted by the script.
 
+To import historic triggers under the **disposable least-privilege test account**, the importer rewrites **only mysqldump trigger DDL DEFINER metadata** in the input stream; it does not alter the original SQL file or any INSERT row data. This means the private test **does not certify the production trigger-definer users/privileges**; those require a separate Hostinger review before GO. The closed-box test reports this limitation explicitly.
+
 The only local report is `private-historical-results/private-historical-summary.json`, containing aggregate booleans and counts. **Never share the private SQL, screenshots of real transactions, account credentials or TINs.** The output is not proof of anonymization.
 
 If the import, migrations, row preservation, restore, or DB-version match fails, the gate is NO-GO; no automatic fix is applied to Hostinger.
