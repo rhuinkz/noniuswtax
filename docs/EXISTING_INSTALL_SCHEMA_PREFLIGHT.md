@@ -55,6 +55,30 @@ Review it before sharing: your organization may have custom table or column name
 
 Both `schema-preflight-results/` and `local-private/` are Git-ignored and Docker-image-ignored. The source must be outside the repository regardless.
 
+## 3A. Local Docker + Playwright structural compatibility check (new)
+
+**Owner's reported schema-only preflight (2026-11-18): PASS.** The separate local Docker structure import verified **zero rows in all tables**, inventoried **21 tables, 177 columns, and 14 triggers**, generated the ignored `schema-preflight-results/existing-schema-report.json`, and removed its disposable database. These totals are from the console report, not yet a detailed object-by-object comparison; the generated JSON itself was not provided.
+
+The next step does **not** need another Hostinger export, and uses **the generated JSON only**. Fetch/Pull the updated `test/existing-install-schema-preflight` branch and run in the repository folder with Docker Desktop open:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\Test-ExistingSchemaDockerPlaywright.ps1
+```
+
+This creates a separate Docker Compose project `nonius-existing-compatibility`, with an isolated MariaDB and local Apache/PHP app, and a Chromium Playwright container. It mounts **only** the metadata report **read-only**, never your original `.sql` export or real records, and uses an **internal Docker network**. The already-established 12 browser tests re-create purely fictional schools, owners, suppliers, transactions, month-locks, PDF certificates and a 10,000-transaction test sample in a disposable fresh-installation database. A new structural comparator then measures the fresh application's tables, columns, column types, foreign keys, indexes, and triggers against the existing installed schema report.
+
+Reports are generated **only locally** under `existing-compat-results/`:
+
+- `compatibility-summary.json`: Playwright pass/fail count, missing/extra/changed structural item counts, and an explicit `production_approval: PENDING`.
+- `existing-schema-comparison.json`: detailed metadata-only differences grouped by table, column, foreign key, index, and trigger.
+- `results.json` and `html/index.html`: the synthetic Playwright suite's normal evidence.
+
+If it reports `PLAYWRIGHT_PASS_SCHEMA_DRIFT_REVIEW_REQUIRED` and exits with code **2**, this is an **expected review outcome** when the existing deployment predates a migration or contains a custom object. It is **not** approval to force migrations or override an installed schema. For example, the reported existing **14 triggers** should be compared with the freshly tested current source before concluding which trigger changed. Script exit **1** indicates a technical test failure, and exit **0** indicates structurally matching metadata—not legal, migration, or production approval.
+
+You can share **only** `compatibility-summary.json` and `existing-schema-comparison.json` after checking structural names for confidentiality. **Never upload source SQL, genuine transaction data, credentials or database backups.**
+
+This check measures installed structural **differences**, not an upgrade of its historical records. Full data sanitization, protected hash handling and actual installed-state rollback remain separate required gates.
+
 ## 4. Next gated technical work (not yet authorized)
 
 Once the structural report is reviewed:
@@ -70,7 +94,8 @@ Once the structural report is reviewed:
 | Gate | Status |
 |---|---|
 | Full disposable synthetic tests, upgrade and rollback | PASS (already recorded; distinct from this task) |
-| Existing deployed database **schema-only** mapping | PENDING user's safe structural export |
+| Existing deployed database **schema-only** inventory | 21 tables, 177 columns, 14 triggers; local zero-row preflight PASS (console log) |
+| Local Docker + Playwright installed-schema drift comparison | PREPARED; awaiting owner's execution |
 | Existing historical data sanitization and realistic clone verification | NOT STARTED |
 | Real-hosting security, authorized BIR/finance and release approval | PENDING |
 
