@@ -8,6 +8,7 @@ on:
       - 'tests/release/schema-compare-core.cjs'
       - 'tests/release/schema-compare-unit.cjs'
       - 'tests/release/compare-existing-schema.cjs'
+      - 'tests/release/migration037-legacy-check.cjs'
       - 'tests/release/Dockerfile.browser'
       - 'scripts/Inspect-ExistingSchema.ps1'
       - 'tests/release/existing-schema-report.ddl'
@@ -45,6 +46,7 @@ jobs:
         shell: bash
         run: |
           node --check tests/release/compare-existing-schema.cjs
+          node --check tests/release/migration037-legacy-check.cjs
           node --check tests/release/schema-compare-core.cjs
           node --check tests/release/schema-compare-unit.cjs
           node tests/release/schema-compare-unit.cjs
