@@ -85,7 +85,14 @@ try {
         'inspector','-ec',($cli + ' < /inspection/zero-rows.sql'))
     $rowResult = & docker @rowCmd
     if ($LASTEXITCODE -ne 0) { throw 'Failed to prove the imported schema is empty.' }
-    $rowResults = @($rowResult | Where-Object { $_ -match '^\s*\d+\s*
+    $rowResults = @($rowResult | Where-Object { $_ -match '^\s*\d+\s*$' })
+    if ($rowResults.Count -ne 1 -or $rowResults[0].Trim() -ne '0') {
+        throw 'One or more tables contains actual rows. Structure-only export required.'
+    }
+    Write-Host 'PASS: zero rows in all imported tables.' -ForegroundColor Green
+    Write-Host 'Collecting structural metadata without reading record contents...'
+    $cmd = $compose + @('run','--rm','--no-deps','-T','--entrypoint','sh',
+        'inspector','-ec',($cli + ' < /inspection/report.sql'))
     $stdout = & docker @cmd
     if ($LASTEXITCODE -ne 0) { throw 'Schema report query failed.' }
     $jsonLines = @($stdout | Where-Object { $_ -match '^\s*\{' })
