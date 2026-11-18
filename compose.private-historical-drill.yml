@@ -37,6 +37,10 @@ services:
         source: ${NONIUS_PRIVATE_SQL_PATH:?Use a private full .sql backup outside the Git repo}
         target: /private/input.sql
         read_only: true
+      - type: bind
+        source: ./tests/release/normalize-private-trigger-definers.sed
+        target: /private/normalize-trigger-definers.sed
+        read_only: true
     networks: [privateclosed]
     depends_on:
       db:
