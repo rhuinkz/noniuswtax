@@ -157,7 +157,7 @@ try{
     New-Item -ItemType Directory -Path $privateFolder -Force | Out-Null
     $privateLog=Join-Path $privateFolder 'sql-import-private.log'
     $env:NONIUS_PRIVATE_SQL_PATH=$sql
-    DoDocker @('info','--format','{{.ServerVersion}}')
+    DoDocker (@('info','--format','{{.ServerVersion}}'))
     $dockerUsed=$true
     # The exact Compose project is separate from all prior synthetic test DBs.
     DoDocker ($compose + @('down','--volumes','--remove-orphans'))
