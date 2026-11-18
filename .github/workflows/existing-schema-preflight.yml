@@ -4,9 +4,9 @@ on:
     paths:
       - 'compose.existing-schema-preflight.yml'
       - 'scripts/Inspect-ExistingSchema.ps1'
-      - 'tests/release/existing-schema-report.sql'
-      - 'tests/release/existing-schema-no-rows.sql'
-      - 'tests/release/fixtures/existing-schema-structure-only.sql'
+      - 'tests/release/existing-schema-report.ddl'
+      - 'tests/release/existing-schema-no-rows.ddl'
+      - 'tests/release/fixtures/existing-schema-structure-only.ddl'
       - '.github/workflows/existing-schema-preflight.yml'
   workflow_dispatch:
 
@@ -21,7 +21,7 @@ jobs:
       - name: Syntax check and isolated Docker Compose configuration
         shell: bash
         run: |
-          cp tests/release/fixtures/existing-schema-structure-only.sql /tmp/nonius-fixture.sql
+          cp tests/release/fixtures/existing-schema-structure-only.ddl /tmp/nonius-fixture.sql
           NONIUS_SCHEMA_SQL_PATH=/tmp/nonius-fixture.sql docker compose -f compose.existing-schema-preflight.yml config --quiet
       - name: Parse PowerShell script without executing any user SQL
         shell: pwsh
@@ -38,7 +38,7 @@ jobs:
       - name: Refuse a data-bearing SQL export before Docker starts
         shell: bash
         run: |
-          cp tests/release/fixtures/existing-schema-structure-only.sql /tmp/nonius-with-data.sql
+          cp tests/release/fixtures/existing-schema-structure-only.ddl /tmp/nonius-with-data.sql
           printf "\nINSERT INTO schools(id,name,data) VALUES('id','sensitive','{}');\n" >> /tmp/nonius-with-data.sql
           set +e
           error=$(pwsh -NoProfile -File ./scripts/Inspect-ExistingSchema.ps1 -SchemaSqlPath /tmp/nonius-with-data.sql 2>&1)
@@ -52,7 +52,7 @@ jobs:
       - name: Refuse a disguised row insertion after isolated import
         shell: bash
         run: |
-          cp tests/release/fixtures/existing-schema-structure-only.sql /tmp/nonius-disguised-row.sql
+          cp tests/release/fixtures/existing-schema-structure-only.ddl /tmp/nonius-disguised-row.sql
           printf "\n/* Comment */ INSERT INTO schools(id,name,data) VALUES('id','do-not-export','{}');\n" >> /tmp/nonius-disguised-row.sql
           set +e
           error=$(pwsh -NoProfile -File ./scripts/Inspect-ExistingSchema.ps1 -SchemaSqlPath /tmp/nonius-disguised-row.sql 2>&1)
