@@ -63,6 +63,16 @@ jobs:
           test -s /tmp/nonius-private-synthetic-fixture.sql
           chmod 600 /tmp/nonius-private-synthetic-fixture.sql
           echo 'PASS: fake historical dataset generated outside source repository'
+      - name: Exercise fictional SQL importer with visible CI-only synthetic diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          export NONIUS_PRIVATE_SQL_PATH=/tmp/nonius-private-synthetic-fixture.sql
+          compose=(docker compose -p nonius-fake-import-diagnostic -f compose.private-historical-drill.yml)
+          trap '"${compose[@]}" down --volumes --remove-orphans' EXIT
+          "${compose[@]}" up -d --wait db
+          "${compose[@]}" run --rm --no-deps --entrypoint sh importer -ec 'MYSQL_PWD="$DB_PASS" mariadb --host="$DB_HOST" --user="$DB_USER" --database="$DB_NAME" < /private/input.sql'
+          echo 'PASS: fictional SQL imported under a least-privilege test DB user'
       - name: Run isolated local historical import, migration 037, and full restore
         shell: bash
         run: |
