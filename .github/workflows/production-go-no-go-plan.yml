@@ -1,0 +1,103 @@
+name: Production GO-NO-GO plan validator (NO DEPLOY)
+on:
+  pull_request:
+    paths:
+      - 'scripts/Assess-ProductionReadiness.ps1'
+      - 'docs/RELEASE_GATE_TEMPLATE.json'
+      - 'docs/PRODUCTION_GO_NO_GO_MASTER_PLAN.md'
+      - '.github/workflows/production-go-no-go-plan.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fail-closed-governance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check assessor PowerShell syntax
+        shell: pwsh
+        run: |
+          $tokens=$null; $errors=$null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path ./scripts/Assess-ProductionReadiness.ps1).Path,
+            [ref]$tokens,[ref]$errors) | Out-Null
+          if($errors.Count -gt 0){
+            $errors | ForEach-Object {Write-Error $_.Message}
+            throw 'Assessor syntax invalid'
+          }
+      - name: Require NOT READY for completely unsigned/default evidence
+        shell: bash
+        run: |
+          set +e
+          pwsh -NoProfile -File ./scripts/Assess-ProductionReadiness.ps1 -EvidencePath ./docs/RELEASE_GATE_TEMPLATE.json
+          status=$?
+          set -e
+          test "$status" -eq 2
+          node - <<'NODE'
+          const r=require('./readiness-results/release-readiness-assessment.json');
+          if(r.automated_assessment!=='NOT_READY'||
+             r.production_release!=='NO_GO_UNTIL_EXPLICIT_AUTHORIZED_CHANGE'||
+             r.deployment_authorized_by_this_script!==false||
+             r.reviewer_signatures_cryptographically_verified!==false||
+             r.mandatory_gates.length!==9||
+             r.blockers.length<9){
+             throw Error('Unsigned evidence incorrectly passed readiness');
+          }
+          console.log('PASS: unsigned default evidence is blocked with nine mandatory gates');
+          NODE
+      - name: Simulate fictional declarations to test the evaluator only
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const fs=require('fs');
+          const r=JSON.parse(fs.readFileSync('docs/RELEASE_GATE_TEMPLATE.json','utf8'));
+          const sha='a'.repeat(64);
+          r.release.production_artifact_version='0.4.57';
+          r.release.production_artifact_sha256=sha;
+          r.release.last_artifact_retest_sha256=sha;
+          r.release.owner_authorized_change_id='FICTIONAL-QA-CHANGE-001';
+          for(const gate of r.gates){
+             gate.status='PASS';
+             gate.evidence_id='FICTIONAL-QA-EVIDENCE-'+gate.id;
+             gate.reviewed_at_utc=new Date().toISOString().replace(/\.\d{3}Z$/,'Z');
+             gate.signoff_record_id='FICTIONAL-QA-SIGNOFF-'+gate.id;
+             gate.artifact_sha256=sha;
+          }
+          // FAKE RECORDS ONLY in a temp directory; no actual approval exists.
+          fs.writeFileSync('/tmp/nonius-fixture-review.json',JSON.stringify(r));
+          NODE
+          pwsh -NoProfile -File ./scripts/Assess-ProductionReadiness.ps1 -EvidencePath /tmp/nonius-fixture-review.json
+          node - <<'NODE'
+          const r=require('./readiness-results/release-readiness-assessment.json');
+          if(r.automated_assessment!=='READY_FOR_FORMAL_GO_DECISION'||
+             r.deployment_authorized_by_this_script!==false||
+             r.reviewer_signatures_cryptographically_verified!==false){
+              throw Error('Assessor did not distinguish formal-review readiness from approval');
+          }
+          console.log('PASS: fictional evidence can reach human-review-ready status but never production GO');
+          NODE
+      - name: Block tampered artifact identity despite fictional declarations
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const fs=require('fs');
+          const p='/tmp/nonius-fixture-review.json';
+          const r=JSON.parse(fs.readFileSync(p,'utf8'));
+          r.release.last_artifact_retest_sha256='b'.repeat(64);
+          fs.writeFileSync('/tmp/nonius-tampered-review.json',JSON.stringify(r));
+          NODE
+          set +e
+          pwsh -NoProfile -File ./scripts/Assess-ProductionReadiness.ps1 -EvidencePath /tmp/nonius-tampered-review.json
+          status=$?
+          set -e
+          test "$status" -eq 2
+          node - <<'NODE'
+          const r=require('./readiness-results/release-readiness-assessment.json');
+          if(r.automated_assessment!=='NOT_READY'||r.deployment_authorized_by_this_script!==false||
+             !r.blockers.some(v=>v.includes('re-test digest'))){
+             throw Error('Mismatched artifact retest hash was not blocked');
+          }
+          console.log('PASS: mismatched final artifact hash blocks readiness');
+          NODE
