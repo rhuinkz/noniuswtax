@@ -44,3 +44,7 @@ Thumbs.db
 
 # Single-command comprehensive release acceptance evidence.
 /acceptance-results/
+
+# Local private R0-R8 release evidence references and non-deploying assessments.
+/readiness-results/
+/private-release-evidence/
