@@ -30,7 +30,7 @@ jobs:
             if($errors.Count -gt 0){$errors | ForEach-Object {Write-Error $_.Message};exit 1}
           '
           printf 'CREATE TABLE demo(id INT);' > /tmp/example-private-structure.sql
-          NONIUS_PRIVATE_SQL_PATH=/tmp/example-private-structure.sql docker compose -f compose.private-historical-drill.yml config --format json > /tmp/nonius-private-topology.json
+          NONIUS_PRIVATE_SQL_PATH=/tmp/example-private-structure.sql docker compose --profile manual -f compose.private-historical-drill.yml config --format json > /tmp/nonius-private-topology.json
           node - <<'NODE'
           const x=require('/tmp/nonius-private-topology.json');
           if(x.networks.privateclosed?.internal!==true ||
