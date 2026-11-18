@@ -1,11 +1,11 @@
 # NONIUSWTAX R1 private backup RESTORE verification.
 # This tool NEVER connects to Hostinger, modifies live files or deploys anything.
 # Restore the owner-provided FULL database SQL only inside a disposable,
-# internal-network Docker MariaDB and inspect a website ZIP without extracting.
+# internal-network Docker MariaDB and inspect a private site archive without extracting.
 # PRIVATE records remain solely on the operator's local encrypted disk/Docker.
 param(
     [Parameter(Mandatory=$true)][string]$FullSqlPath,
-    [Parameter(Mandatory=$true)][string]$WebsiteZipPath,
+    [Parameter(Mandatory=$true)][string]$WebsiteArchivePath,
     [string]$SchemaReportPath = '.\schema-preflight-results\existing-schema-report.json'
 )
 $ErrorActionPreference='Stop'
@@ -53,12 +53,13 @@ $report=[ordered]@{
 $failure=$null
 $dockerUsed=$false
 $priorEnv=[Environment]::GetEnvironmentVariable('NONIUS_PRIVATE_SQL_PATH')
+$priorFormat=[Environment]::GetEnvironmentVariable('NONIUS_PRIVATE_SQL_FORMAT')
 $compose=@('compose','-p','nonius-private-recovery','-f','compose.private-backup-restore.yml')
 function DoDocker([string[]]$items){
     & docker @items
     if($LASTEXITCODE -ne 0){throw ('Local Docker operation failed (exit '+$LASTEXITCODE+').')}
 }
-function SecurePath([string]$path,[string]$kind,[string]$extension){
+function SecurePath([string]$path,[string]$kind,[string[]]$extensions){
     $real=(Resolve-Path -LiteralPath $path).Path
     if(!(Test-Path -LiteralPath $real -PathType Leaf)){
         throw ('Missing private '+$kind+' file.')
@@ -68,9 +69,11 @@ function SecurePath([string]$path,[string]$kind,[string]$extension){
     if($real.StartsWith($repoPrefix,[System.StringComparison]::OrdinalIgnoreCase)){
         throw ('Place private '+$kind+' OUTSIDE the Git repository.')
     }
-    if([System.IO.Path]::GetExtension($real).ToLowerInvariant() -cne $extension){
-        throw ('Expected a plain '+$extension+' private '+$kind+' file.')
+    $valid=$false
+    foreach($suffix in $extensions){
+        if($real.ToLowerInvariant().EndsWith($suffix)){$valid=$true}
     }
+    if(!$valid){throw ('Unexpected private '+$kind+' format. Allowed: '+($extensions -join ', '))}
     return $real
 }
 function ValidateSQL([string]$sqlPath){
@@ -78,66 +81,86 @@ function ValidateSQL([string]$sqlPath){
     if($size -lt 100 -or $size -gt 10737418240){
         throw 'Database backup is empty or exceeds the 10 GiB guarded limit.'
     }
-    $seenTable=$false; $lineNumber=0
-    foreach($line in [System.IO.File]::ReadLines($sqlPath)){
-        $lineNumber++
-        if($line -match '(?i)^\s*CREATE\s+TABLE\b'){$seenTable=$true}
-        # Refuse export format/operations that escape the isolated database,
-        # request global privileges, read external files, or write to disk.
-        # Fail closed rather than rewriting confidential SQL.
-        if($line -match '(?i)^\s*(?:CREATE|DROP|ALTER)\s+DATABASE\b|^\s*USE\s+|^\s*(?:CREATE|ALTER|DROP)\s+USER\b|^\s*(?:GRANT|REVOKE|FLUSH|SHUTDOWN)\b|^\s*SOURCE\s+|^\s*\\\.|^\s*LOAD\s+DATA\b|^\s*SET\s+(?:GLOBAL|PERSIST)\b|(?i)\bINTO\s+(?:OUTFILE|DUMPFILE)\b|\bLOAD_FILE\s*\('){
-            throw ('Unsafe or unsupported command near backup SQL line '+$lineNumber+
-                '. Re-export this database as plain SQL without CREATE DATABASE, USE, globals or external-file commands.')
+    $raw=[System.IO.File]::OpenRead($sqlPath)
+    $payload=$raw
+    try{
+        if($sqlPath.ToLowerInvariant().EndsWith('.sql.gz')){
+            $payload=[System.IO.Compression.GZipStream]::new(
+                $raw,[System.IO.Compression.CompressionMode]::Decompress)
+        }
+        $reader=[System.IO.StreamReader]::new($payload)
+        $seenTable=$false; $lineNumber=0
+        try{
+            while($null -ne ($line=$reader.ReadLine())){
+                $lineNumber++
+                if($line -match '(?i)^\s*CREATE\s+TABLE\b'){$seenTable=$true}
+                if($line -match '(?i)^\s*(?:CREATE|DROP|ALTER)\s+DATABASE\b|^\s*USE\s+|^\s*(?:CREATE|ALTER|DROP)\s+USER\b|^\s*(?:GRANT|REVOKE|FLUSH|SHUTDOWN)\b|^\s*SOURCE\s+|^\s*\\\.|^\s*LOAD\s+DATA\b|^\s*SET\s+(?:GLOBAL|PERSIST)\b|\bINTO\s+(?:OUTFILE|DUMPFILE)\b|\bLOAD_FILE\s*\('){
+                    throw ('Unsupported SQL statement near line '+$lineNumber+
+                        '. Export Structure+Data+Triggers without database switching or account/global commands.')
+                }
+            }
+        }finally{$reader.Dispose()}
+        if(!$seenTable){throw 'No CREATE TABLE found. Export Structure AND Data, not Data-only.'}
+    }finally{$payload.Dispose();$raw.Dispose()}
+}
+function InspectSiteArchive([string]$archivePath){
+    $lower=$archivePath.ToLowerInvariant()
+    $names=@(); $versionText=$null
+    if($lower.EndsWith('.zip')){
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $z=[System.IO.Compression.ZipFile]::OpenRead($archivePath)
+        try{
+            $entries=@($z.Entries|Where-Object {$_.Name -ne ''})
+            $names=@($entries|ForEach-Object {$_.FullName})
+            $boots=@($entries|Where-Object {$_.FullName.Replace('\','/') -match '(^|/)lib/bootstrap\.php$'})
+            if($boots.Count -ne 1){throw 'Code archive must contain exactly one lib/bootstrap.php.'}
+            if($boots[0].Length -gt 1048576){throw 'Unexpected bootstrap size.'}
+            $reader=[System.IO.StreamReader]::new($boots[0].Open())
+            try{$versionText=$reader.ReadToEnd()}finally{$reader.Dispose()}
+        }finally{$z.Dispose()}
+    }elseif($lower.EndsWith('.tar.gz')){
+        $tar=Get-Command tar -ErrorAction Stop
+        $names=@(& $tar.Source -tzf $archivePath 2>$null)
+        if($LASTEXITCODE -ne 0){throw 'Cannot read private .tar.gz file manifest.'}
+        $boots=@($names|Where-Object {$_.Replace('\','/') -match '(^|/)lib/bootstrap\.php$'})
+        if($boots.Count -ne 1){throw 'Site .tar.gz must contain exactly one lib/bootstrap.php.'}
+        $versionText=((& $tar.Source -xOzf $archivePath $boots[0] 2>$null) -join [Environment]::NewLine)
+        if($LASTEXITCODE -ne 0 -or $versionText.Length -gt 1048576){
+            throw 'Cannot privately read code version from site archive.'
+        }
+    }else{throw 'Only .zip and .tar.gz website archives are allowed.'}
+    $seen=[System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach($name in $names){
+        $normal=([string]$name).Replace('\','/')
+        if($normal -match '^(?:/|[A-Za-z]:)' -or
+           $normal -match '(?:^|/)\.\.(?:/|$)' -or $normal.Contains([char]0)){
+            throw 'Website archive has unsafe paths. No archive contents were unpacked.'
+        }
+        if(!$normal.EndsWith('/')){
+            if(!$seen.Add($normal)){throw 'Website archive has duplicate normalized entry names.'}
         }
     }
-    if(!$seenTable){throw 'No table definitions found. Export both Structure AND Data, not Data only.'}
+    if($names.Count -lt 10){throw 'Website archive has too few entries for complete app recovery.'}
+    if(@($names|Where-Object {$_.Replace('\','/') -match '(^|/)update\.php$'}).Count -ne 1 -or
+       @($names|Where-Object {$_.Replace('\','/') -match '(^|/)lib/migrations\.php$'}).Count -ne 1){
+        throw 'Website archive must contain update.php and lib/migrations.php exactly once.'
+    }
+    if($versionText -notmatch "const\s+APP_VERSION\s*=\s*'([^']+)'"){
+        throw 'No installed APP_VERSION could be read from the website archive.'
+    }
+    $script:report.code_archive_version=$Matches[1]
+    $script:report.code_archive_file_count=@($names|Where-Object {!$_.EndsWith('/')}).Count
+    $script:report.code_archive_has_private_config=
+        [bool](@($names|Where-Object {$_.Replace('\','/') -match '(^|/)config\.local\.php$'}).Count)
+    $script:report.code_archive_has_storage=
+        [bool](@($names|Where-Object {$_.Replace('\','/') -match '(^|/)storage/'}).Count)
 }
-function InspectZip([string]$zipPath){
-    Add-Type -AssemblyName System.IO.Compression.FileSystem
-    $z=[System.IO.Compression.ZipFile]::OpenRead($zipPath)
-    try{
-        $files=New-Object 'System.Collections.Generic.List[object]'
-        $seen=New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
-        foreach($entry in $z.Entries){
-            $name=[string]$entry.FullName
-            $normal=$name.Replace('\','/')
-            if($normal -match '^(?:/|[A-Za-z]:)' -or
-               $normal -match '(?:^|/)\.\.(?:/|$)' -or $normal.Contains([char]0)){
-                throw 'Website ZIP contains an unsafe path. Not extracting.'
-            }
-            if(!$normal.EndsWith('/') -and $entry.Name -ne ''){
-                if(!$seen.Add($normal)){throw 'Website ZIP contains duplicate file paths.'}
-                $files.Add($entry) | Out-Null
-            }
-        }
-        if($files.Count -lt 10){throw 'Website ZIP has too few files to represent a complete application.'}
-        $boots=@($files | Where-Object {$_.FullName.Replace('\','/') -match '(^|/)lib/bootstrap\.php$'})
-        $updaters=@($files | Where-Object {$_.FullName.Replace('\','/') -match '(^|/)update\.php$'})
-        $migrations=@($files | Where-Object {$_.FullName.Replace('\','/') -match '(^|/)lib/migrations\.php$'})
-        if($boots.Count -ne 1 -or $updaters.Count -ne 1 -or $migrations.Count -ne 1){
-            throw 'Website ZIP must contain exactly one lib/bootstrap.php, lib/migrations.php and update.php.'
-        }
-        if($boots[0].Length -gt 1048576){throw 'Unexpected bootstrap size; refusing to read ZIP entry.'}
-        $stream=$boots[0].Open()
-        $reader=New-Object System.IO.StreamReader($stream)
-        try{$text=$reader.ReadToEnd()}
-        finally{$reader.Dispose()}
-        if($text -notmatch "const\s+APP_VERSION\s*=\s*'([^']+)'"){
-            throw 'Website ZIP does not expose an application version; wrong or incompatible backup.'
-        }
-        $script:report.code_archive_version=$Matches[1]
-        $script:report.code_archive_file_count=$files.Count
-        $script:report.code_archive_has_private_config=
-            [bool](@($files | Where-Object {$_.FullName.Replace('\','/') -match '(^|/)config\.local\.php$'}).Count)
-        $script:report.code_archive_has_storage=
-            [bool](@($files | Where-Object {$_.FullName.Replace('\','/') -match '(^|/)storage/'}).Count)
-    }finally{$z.Dispose()}
-}
+
 Write-Host 'NONIUSWTAX PRIVATE BACKUP RESTORE — DISPOSABLE DOCKER ONLY' -ForegroundColor Cyan
 Write-Host 'No Hostinger connections or public ports. Private SQL never leaves the operator computer.'
 try{
-    $sql=SecurePath $FullSqlPath 'database backup' '.sql'
-    $zip=SecurePath $WebsiteZipPath 'website backup' '.zip'
+    $sql=SecurePath $FullSqlPath 'database backup' @('.sql','.sql.gz')
+    $siteArchive=SecurePath $WebsiteArchivePath 'website backup' @('.zip','.tar.gz')
     $expectedPath=(Resolve-Path -LiteralPath $SchemaReportPath).Path
     $expected=Get-Content -LiteralPath $expectedPath -Raw | ConvertFrom-Json
     if($expected.report_type -ne 'SCHEMA_ONLY_NO_PRODUCTION_RECORDS' -or
@@ -149,14 +172,15 @@ try{
     }
     Write-Host 'Preflight: validating SQL export safety without displaying its records...'
     ValidateSQL $sql
-    Write-Host 'Preflight: inspecting website ZIP entries without extracting contents...'
-    InspectZip $zip
+    Write-Host 'Preflight: inspecting website archive entries without extracting contents...'
+    InspectSiteArchive $siteArchive
     $report.database_backup_sha256=(Get-FileHash -LiteralPath $sql -Algorithm SHA256).Hash.ToLowerInvariant()
-    $report.code_backup_sha256=(Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+    $report.code_backup_sha256=(Get-FileHash -LiteralPath $siteArchive -Algorithm SHA256).Hash.ToLowerInvariant()
     $privateFolder=Join-Path (Split-Path -Parent $sql) 'nonius-private-restore-logs'
     New-Item -ItemType Directory -Path $privateFolder -Force | Out-Null
     $privateLog=Join-Path $privateFolder 'sql-import-private.log'
     $env:NONIUS_PRIVATE_SQL_PATH=$sql
+    $env:NONIUS_PRIVATE_SQL_FORMAT=if($sql.ToLowerInvariant().EndsWith('.sql.gz')){'gzip'}else{'plain'}
     DoDocker (@('info','--format','{{.ServerVersion}}'))
     $dockerUsed=$true
     # The exact Compose project is separate from all prior synthetic test DBs.
@@ -164,8 +188,9 @@ try{
     DoDocker ($compose + @('up','-d','--wait','db'))
     Write-Host 'Restoring the full historical SQL to an offline isolated MariaDB...'
     $cli='MYSQL_PWD="$DB_PASS" mariadb --batch --skip-column-names --host="$DB_HOST" --user="$DB_USER" "$DB_NAME"'
-    $command=$compose+@('run','--rm','--no-deps','-T','--entrypoint','sh','inspector',
-       '-ec',($cli+' < /private/input.sql'))
+    $importCommand=if($env:NONIUS_PRIVATE_SQL_FORMAT -eq 'gzip'){'gzip -dc /private/input.backup | '+$cli}else{$cli+' < /private/input.backup'}
+    $command=$compose+@('run','--rm','--no-deps','-T','--entrypoint','bash','inspector',
+       '-o','pipefail','-ec',$importCommand)
     # Import errors may contain database literals. They go into a PRIVATE
     # local file OUTSIDE Git and are never printed or published by this script.
     & docker @command *> $privateLog
@@ -229,6 +254,8 @@ try{
     }
     if($null -eq $priorEnv){Remove-Item Env:\NONIUS_PRIVATE_SQL_PATH -ErrorAction SilentlyContinue}
     else{$env:NONIUS_PRIVATE_SQL_PATH=$priorEnv}
+    if($null -eq $priorFormat){Remove-Item Env:\NONIUS_PRIVATE_SQL_FORMAT -ErrorAction SilentlyContinue}
+    else{$env:NONIUS_PRIVATE_SQL_FORMAT=$priorFormat}
     $report.completed_utc=(Get-Date).ToUniversalTime().ToString('o')
     [System.IO.File]::WriteAllText($output,(($report|ConvertTo-Json -Depth 10)+[Environment]::NewLine),$utf8)
     Write-Host ('Local metadata-only report: '+$output)
