@@ -99,6 +99,12 @@ WHERE id = '037_checked_hash_period_guard';
 
 Only the result of this single migration-status query should be shared; do not export the `schema_migrations` table or any real records. If no row exists, report **NOT PRESENT**. If the status is `applied` despite the missing trigger, flag it as a separate integrity defect requiring an approved recovery plan and staged repair. The trigger count discrepancy alone is not approval to run SQL or modify the live site.
 
+### Automated regression verification — GitHub CI PASS, 18 November 2026
+
+All three review-branch CI workflows passed after adding the synthetic migration 037 regression. The extended Docker + Playwright CI run exercised 12/12 functional scenarios, simulated a database with 14 triggers and migration 037 absent, ran the normal PHP migration bootstrap, recovered the **15th** trigger, preserved synthetic transactions/audit/history/checked hash, and rejected a closed-month hash-only update. **CI used fictional schema metadata, not the owner's 21-table installed-site export.**
+
+The owner's actual metadata-only comparison previously found one missing guard trigger. **Re-run the updated single Windows test command with the owner's locally stored structural JSON** to link the new migration-regression evidence to that specific on-disk report. The installed database's migration status is still unknown; provide only the single `037_checked_hash_period_guard` status from an authorized read-only query.
+
 ## 4. Next gated technical work (not yet authorized)
 
 Once the structural report is reviewed:
