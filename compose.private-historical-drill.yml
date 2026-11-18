@@ -1,0 +1,74 @@
+# PRIVATE HISTORICAL DATABASE DRILL — OFFLINE AND TEMPORARY.
+# No application server or host ports are started. The owner's full backup
+# stays on their own workstation and is never included in a Docker image.
+# Use only after explicit institutional permission for local processing.
+name: nonius-private-historical-drill
+services:
+  db:
+    image: mariadb:11.4
+    restart: "no"
+    environment:
+      MARIADB_ROOT_PASSWORD: disposable-historical-root-only
+      MARIADB_DATABASE: nonius_historical_test
+      MARIADB_USER: nonius_historical_local
+      MARIADB_PASSWORD: disposable-historical-user-only
+    command: ["--event-scheduler=OFF", "--skip-name-resolve"]
+    volumes:
+      - private-historical-db:/var/lib/mysql
+      - private-internal-backup:/private-backup
+    networks: [privateclosed]
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+  importer:
+    image: mariadb:11.4
+    profiles: ["manual"]
+    entrypoint: ["sh", "-ec"]
+    environment:
+      DB_HOST: db
+      DB_NAME: nonius_historical_test
+      DB_USER: nonius_historical_local
+      DB_PASS: disposable-historical-user-only
+    volumes:
+      - type: bind
+        source: ${NONIUS_PRIVATE_SQL_PATH:?Use a private full .sql backup outside the Git repo}
+        target: /private/input.sql
+        read_only: true
+      - type: bind
+        source: ./tests/release/normalize-private-trigger-definers.sed
+        target: /private/normalize-trigger-definers.sed
+        read_only: true
+    networks: [privateclosed]
+    depends_on:
+      db:
+        condition: service_healthy
+    read_only: true
+    tmpfs: [/tmp]
+  cli:
+    build:
+      context: .
+      dockerfile: tests/release/Dockerfile.app
+    profiles: ["manual"]
+    entrypoint: ["php"]
+    environment:
+      NONIUS_LOCAL_PRIVATE_DRILL: "true"
+      DB_HOST: db
+      DB_NAME: nonius_historical_test
+      DB_USER: nonius_historical_local
+      DB_PASS: disposable-historical-user-only
+    volumes:
+      - private-evidence:/private-evidence
+    networks: [privateclosed]
+    depends_on:
+      db:
+        condition: service_healthy
+networks:
+  privateclosed:
+    internal: true
+volumes:
+  private-historical-db: {}
+  private-internal-backup: {}
+  private-evidence: {}

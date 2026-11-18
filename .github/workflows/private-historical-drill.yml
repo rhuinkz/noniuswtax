@@ -1,0 +1,120 @@
+name: Private historical drill simulation (synthetic only, no production)
+on:
+  pull_request:
+    paths:
+      - 'compose.private-historical-drill.yml'
+      - 'scripts/Run-PrivateHistoricalDrill.ps1'
+      - 'tests/release/private-historical-check.php'
+      - 'tests/release/normalize-private-trigger-definers.sed'
+      - 'scripts/Check-FinalGoNoGo.ps1'
+      - 'docs/production-approval.template.json'
+      - '.github/workflows/private-historical-drill.yml'
+      - 'docs/FINAL_PRODUCTION_READINESS_PLAN.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  simulated-private-full-backup-migration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax check and verify offline topology
+        shell: bash
+        run: |
+          php -l tests/release/private-historical-check.php
+          pwsh -NoProfile -Command '$t=$null;$e=$null;[System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path scripts/Check-FinalGoNoGo.ps1).Path,[ref]$t,[ref]$e)|Out-Null;if($e.Count){throw "GO checker parse failed"}'
+          pwsh -NoProfile -Command '
+            $tokens=$null; $errors=$null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path ./scripts/Run-PrivateHistoricalDrill.ps1).Path,
+              [ref]$tokens,[ref]$errors) | Out-Null
+            if($errors.Count -gt 0){$errors | ForEach-Object {Write-Error $_.Message};exit 1}
+          '
+          printf 'CREATE TABLE demo(id INT);' > /tmp/example-private-structure.sql
+          NONIUS_PRIVATE_SQL_PATH=/tmp/example-private-structure.sql docker compose --profile manual -f compose.private-historical-drill.yml config --format json > /tmp/nonius-private-topology.json
+          node - <<'NODE'
+          const x=require('/tmp/nonius-private-topology.json');
+          if(x.networks.privateclosed?.internal!==true ||
+             x.services.db.ports?.length || x.services.cli.ports?.length ||
+             x.services.importer.ports?.length ||
+             !x.services.importer.volumes.find(v=>v.target==='/private/input.sql'&&v.read_only) ||
+             x.services.cli.entrypoint[0]!=='php'){
+            throw new Error('Historical rehearsal must be closed-network CLI-only and read-only source mount');
+          }
+          console.log('PASS: private test topology has NO web entrypoint/ports or internet-enabled network');
+          NODE
+      - name: Prepare fictional 21-table 14-trigger older DB fixture using Playwright
+        shell: bash
+        run: |
+          set -euo pipefail
+          compose=(docker compose -p nonius-historical-fixture -f compose.release-test.yml)
+          "${compose[@]}" build web browser
+          "${compose[@]}" up -d --wait db web
+          "${compose[@]}" run --rm browser
+          "${compose[@]}" exec -T db sh -ec '
+            MYSQL_PWD="$MARIADB_ROOT_PASSWORD" mariadb -uroot "$MARIADB_DATABASE" -e "
+              DROP TRIGGER protect_checked_hash_period_update;
+              DELETE FROM schema_migrations WHERE id='\''037_checked_hash_period_guard'\'';
+            "
+          '
+          "${compose[@]}" exec -T db sh -ec '
+            MYSQL_PWD="$MARIADB_ROOT_PASSWORD" mariadb-dump -uroot --single-transaction --triggers "$MARIADB_DATABASE"
+          ' > /tmp/nonius-private-synthetic-fixture.sql
+          "${compose[@]}" down --volumes --remove-orphans
+          test -s /tmp/nonius-private-synthetic-fixture.sql
+          chmod 600 /tmp/nonius-private-synthetic-fixture.sql
+          echo 'PASS: fake historical dataset generated outside source repository'
+      - name: Exercise fictional SQL importer with visible CI-only synthetic diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          export NONIUS_PRIVATE_SQL_PATH=/tmp/nonius-private-synthetic-fixture.sql
+          compose=(docker compose -p nonius-fake-import-diagnostic -f compose.private-historical-drill.yml)
+          trap '"${compose[@]}" down --volumes --remove-orphans' EXIT
+          "${compose[@]}" up -d --wait db
+          "${compose[@]}" run --rm --no-deps --entrypoint sh importer -ec 'sed -E -f /private/normalize-trigger-definers.sed /private/input.sql | MYSQL_PWD="$DB_PASS" mariadb --host="$DB_HOST" --user="$DB_USER" --database="$DB_NAME"'
+          echo 'PASS: fictional SQL imported under a least-privilege test DB user'
+      - name: Verify final release decision fails closed without actual signed evidence
+        shell: bash
+        run: |
+          set +e
+          pwsh -NoProfile -File ./scripts/Check-FinalGoNoGo.ps1 \
+            -AcceptanceSummaryPath /tmp/not-existing-acceptance.json \
+            -PrivateHistoricalSummaryPath /tmp/not-existing-history.json \
+            -ApprovalRecordPath docs/production-approval.template.json
+          code=$?
+          set -e
+          if [ "$code" -ne 2 ]; then echo "FAIL: missing approvals did not produce NO-GO"; exit 1; fi
+          node - <<'NODE'
+          const r=require(process.cwd()+'/private-release-evidence/final-gate-report.json');
+          if(r.decision!=='NO_GO_BLOCKED_BY_OUTSTANDING_GATES' ||
+             r.executable_deployment_performed!==false ||
+             r.out_of_band_signatures_cryptographically_verified!==false ||
+             r.approved_manual_gates!==0) throw Error('False production GO');
+          console.log('PASS: no technical evidence and unsigned approval template cannot authorize production');
+          NODE
+      - name: Run isolated local historical import, migration 037, and full restore
+        shell: bash
+        run: |
+          pwsh -NoProfile -File ./scripts/Run-PrivateHistoricalDrill.ps1 \
+            -PrivateSqlPath /tmp/nonius-private-synthetic-fixture.sql \
+            -ApprovedForLocalPrivateData
+          node - <<'NODE'
+          const fs=require('fs');
+          const r=JSON.parse(fs.readFileSync('private-historical-results/private-historical-summary.json','utf8'));
+          if(r.format!=='NONIUS_PRIVATE_HISTORICAL_REHEARSAL_V1' ||
+             r.status!=='PASS' || r.production_go!==false ||
+             r.original_tables!==21 || r.original_columns!==177 ||
+             r.original_triggers!==14 || r.trigger_count_after_clone_upgrade!==15 ||
+             r.migration037_initially!=='NO_ROW' ||
+             r.all_business_table_content_digests_unchanged!==true ||
+             r.restored_original_schema_and_data_digest_match!==true ||
+             r.original_database_values_exported_in_report!==false ||
+             r.real_data_sanitized!==false || r.web_staging_uat_performed!==false){
+             throw Error('Failed historical-migration/restore/production-NO-GO acceptance');
+          }
+          console.log('PASS: fictional historical backup, 037 migration, protected rows and full restore, no live data');
+          NODE

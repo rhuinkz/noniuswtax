@@ -40,3 +40,10 @@ RewriteRule ^compose\.existing-schema-compare\.yml$ - [F,L,NC]
 RewriteEngine On
 RewriteRule ^acceptance-results(?:/|$) - [F,L,NC]
 </IfModule>
+
+# Never expose offline historical evidence or private approvals through Apache.
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteRule ^(?:private-historical-results|private-release-evidence)(?:/|$) - [F,L,NC]
+RewriteRule ^compose\.private-historical-drill\.yml$ - [F,L,NC]
+</IfModule>

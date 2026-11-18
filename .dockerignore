@@ -37,3 +37,7 @@ existing-compat-results
 
 # Never put local acceptance results or logs in web/container contexts.
 acceptance-results
+
+# Do not copy even aggregate private-data historical evidence into an app image.
+private-historical-results
+private-release-evidence

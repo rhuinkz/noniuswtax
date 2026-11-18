@@ -44,3 +44,7 @@ Thumbs.db
 
 # Single-command comprehensive release acceptance evidence.
 /acceptance-results/
+
+# Actual-data closed-box historical test outputs and private signoff records.
+/private-historical-results/
+/private-release-evidence/
