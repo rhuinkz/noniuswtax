@@ -70,7 +70,7 @@ jobs:
       - name: Compose config must have no host ports and be internal-only
         shell: bash
         run: |
-          NONIUS_PRIVATE_SQL_PATH=/tmp/nonius-fixture.sql NONIUS_PRIVATE_SQL_FORMAT=plain docker compose -f compose.private-backup-restore.yml config --format json > /tmp/nonius-private-compose.json
+          NONIUS_PRIVATE_SQL_PATH=/tmp/nonius-fixture.sql NONIUS_PRIVATE_SQL_FORMAT=plain docker compose --profile manual -f compose.private-backup-restore.yml config --format json > /tmp/nonius-private-compose.json
           node - <<'NODE'
           const d=require('/tmp/nonius-private-compose.json');
           if(!d.networks.privateonly.internal || d.services.web || d.services.db.ports?.length ||
