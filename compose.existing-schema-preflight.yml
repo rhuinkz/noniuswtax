@@ -37,6 +37,10 @@ services:
         source: ./tests/release/existing-schema-report.sql
         target: /inspection/report.sql
         read_only: true
+      - type: bind
+        source: ./tests/release/existing-schema-no-rows.sql
+        target: /inspection/zero-rows.sql
+        read_only: true
     networks: [privateonly]
     depends_on:
       db:
