@@ -37,3 +37,6 @@ existing-compat-results
 
 # Never put local acceptance results or logs in web/container contexts.
 acceptance-results
+
+readiness-results
+private-release-evidence
