@@ -2,7 +2,10 @@
 # Run from Windows repository root:
 # powershell -ExecutionPolicy Bypass -File .\scripts\Run-FullAcceptance.ps1
 # NO Hostinger access, NO real database import, NO production deployment.
-param([string]$SchemaReportPath = '.\schema-preflight-results\existing-schema-report.json')
+param(
+    [string]$SchemaReportPath = '.\schema-preflight-results\existing-schema-report.json',
+    [switch]$CICrossPlatformZip
+)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $root=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -10,6 +13,10 @@ Set-Location $root
 $engine=if($PSVersionTable.PSEdition -eq 'Core'){'pwsh'}else{'powershell.exe'}
 $sourceSHA='adf3fb4bdce027f65c2a18de2ca4d94e8424e35f'
 $zipSHA='e8d1fe062073f81d68bd0c2707951a0dcae1543a8d5c1aa0dd074a1e5ccb367a'
+$effectiveZIP=$zipSHA
+if($CICrossPlatformZip -and ($env:GITHUB_ACTIONS -ne 'true' -or $PSVersionTable.PSEdition -ne 'Core')){
+    throw 'Cross-platform ZIP test mode is reserved for synthetic Linux GitHub Actions; use exact pinned archive on Windows.'
+}
 $zipName='noniuswtax-0.4.57-rc.1-STAGING-ONLY-adf3fb4.zip'
 $zipPath=Join-Path $root ('release-out\' + $zipName)
 $out=Join-Path $root 'acceptance-results'
@@ -93,7 +100,18 @@ try {
         if($build.exit_code -ne 0){throw 'Candidate build failed. See 00-build-candidate.log.'}
     }
     $actualHash=(Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    if($actualHash -cne $zipSHA){throw 'Candidate ZIP hash differs from CI/owner verified SHA-256. Stop.'}
+    if($actualHash -cne $zipSHA -and !$CICrossPlatformZip){
+        throw 'Candidate ZIP hash differs from owner/Windows CI verified SHA-256. Stop.'
+    }
+    if($CICrossPlatformZip){
+        # Linux .NET compression may produce different archive bytes. This CI-only
+        # run still verifies the pinned Git source and every manifest file hash.
+        # NEVER claim it tested the exact Windows ZIP distributed to the owner.
+        $effectiveZIP=$actualHash
+        $env:NONIUS_TEST_CI_MODE='true'
+        $env:NONIUS_TEST_ZIP_SHA256=$effectiveZIP
+        Write-Host 'CI ONLY: cross-platform repacked ZIP verified by exact Git source and per-file digest.' -ForegroundColor Yellow
+    }
     $verify=RunStage 'Verify candidate SHA-256, manifest and 27 runtime files' 'scripts/Verify-ReleaseCandidate.ps1' '00-verify-candidate.log' @('-PackagePath',$zipPath)
     if($verify.exit_code -ne 0){throw 'Candidate verification failed. See 00-verify-candidate.log.'}
     $ready=$true
@@ -116,7 +134,7 @@ $fullPass=($ready -and $runFull.exit_code -eq 0 -and $null -ne $full -and
            $full.playwright.failed -eq 0 -and $full.backup.status -eq 'passed' -and
            @($full.gates | Where-Object {$_.status -ne 'PASS'}).Count -eq 0)
 $candidatePass=($ready -and $runCandidate.exit_code -eq 0 -and $null -ne $candidate -and
-           $candidate.rehearsal_status -eq 'PASS' -and $candidate.candidate_sha256 -ceq $zipSHA -and
+           $candidate.rehearsal_status -eq 'PASS' -and $candidate.candidate_sha256 -ceq $effectiveZIP -and
            $candidate.playwright.passed -eq 12 -and $candidate.in_app_update_review_and_install -eq $true -and
            $candidate.updater_created_code_backup_restored -eq $true -and
            $candidate.updater_created_database_backup_restored -eq $true -and
@@ -165,7 +183,10 @@ $summary=[ordered]@{
     production_release='NO_GO_PENDING_MANUAL_APPROVAL'
     verified_source_commit=$sourceSHA
     candidate_version='0.4.57-rc.1'
-    candidate_sha256=$zipSHA
+    candidate_sha256=$effectiveZIP
+    reference_windows_zip_sha256=$zipSHA
+    ci_cross_platform_zip_repacked=[bool]$CICrossPlatformZip
+    exact_windows_zip_tested=(!$CICrossPlatformZip)
     actual_production_database_accessed=$false
     real_installed_data_sanitized=$false
     real_installed_upgrade_tested=$false
