@@ -1,0 +1,159 @@
+name: Existing-install schema-only privacy preflight (NO LIVE DATA)
+on:
+  pull_request:
+    paths:
+      - 'compose.existing-schema-preflight.yml'
+      - 'compose.existing-schema-compare.yml'
+      - 'scripts/Test-ExistingSchemaDockerPlaywright.ps1'
+      - 'tests/release/schema-compare-core.cjs'
+      - 'tests/release/schema-compare-unit.cjs'
+      - 'tests/release/compare-existing-schema.cjs'
+      - 'tests/release/migration037-legacy-check.cjs'
+      - 'tests/release/Dockerfile.browser'
+      - 'scripts/Inspect-ExistingSchema.ps1'
+      - 'tests/release/existing-schema-report.ddl'
+      - 'tests/release/existing-schema-no-rows.ddl'
+      - 'tests/release/fixtures/existing-schema-structure-only.ddl'
+      - '.github/workflows/existing-schema-preflight.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-synthetic-schema-inspection:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax check and isolated Docker Compose configuration
+        shell: bash
+        run: |
+          cp tests/release/fixtures/existing-schema-structure-only.ddl /tmp/nonius-fixture.sql
+          NONIUS_SCHEMA_SQL_PATH=/tmp/nonius-fixture.sql docker compose -f compose.existing-schema-preflight.yml config --quiet
+      - name: Parse PowerShell script without executing any user SQL
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path ./scripts/Inspect-ExistingSchema.ps1).Path,
+            [ref]$tokens, [ref]$parseErrors) | Out-Null
+          if ($parseErrors.Count -gt 0) {
+            $parseErrors | ForEach-Object { Write-Error $_.Message }
+            throw 'PowerShell schema inspector failed syntax validation'
+          }
+      - name: Check Playwright schema-comparison code and drift cases
+        shell: bash
+        run: |
+          node --check tests/release/compare-existing-schema.cjs
+          node --check tests/release/migration037-legacy-check.cjs
+          node --check tests/release/schema-compare-core.cjs
+          node --check tests/release/schema-compare-unit.cjs
+          node tests/release/schema-compare-unit.cjs
+      - name: Check local-only Docker+Playwright comparison runner and isolated mounts
+        shell: bash
+        run: |
+          pwsh -NoProfile -Command '
+            $tokens = $null; $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path ./scripts/Test-ExistingSchemaDockerPlaywright.ps1).Path,
+              [ref]$tokens,[ref]$errors) | Out-Null
+            if($errors.Count){$errors | ForEach-Object {Write-Error $_.Message};exit 1}
+          '
+          printf '{}' > /tmp/schema-comparison-metadata.json
+          NONIUS_SCHEMA_REPORT_PATH=/tmp/schema-comparison-metadata.json docker compose -f compose.release-test.yml -f compose.existing-schema-compare.yml config --format json > /tmp/schema-compose.json
+          node - <<'NODE'
+          const d = require('/tmp/schema-compose.json');
+          const mounts = d.services.browser.volumes;
+          const schema=mounts.find(v=>v.target==='/suite/existing-schema-report.json');
+          const out=mounts.find(v=>v.target==='/suite/output');
+          if(!schema || schema.read_only!==true || !out ||
+             !out.source.endsWith('/existing-compat-results') ||
+             d.networks.testnet.internal!==true ||
+             d.services.db.ports?.length) {
+            throw new Error('Local-only schema comparison mount, output or internal network is unsafe');
+          }
+          console.log('PASS: metadata-only read-only bind, isolated output and internal test network');
+          NODE
+      - name: Refuse a data-bearing SQL export before Docker starts
+        shell: bash
+        run: |
+          cp tests/release/fixtures/existing-schema-structure-only.ddl /tmp/nonius-with-data.sql
+          printf "\nINSERT INTO schools(id,name,data) VALUES('id','sensitive','{}');\n" >> /tmp/nonius-with-data.sql
+          set +e
+          error=$(pwsh -NoProfile -File ./scripts/Inspect-ExistingSchema.ps1 -SchemaSqlPath /tmp/nonius-with-data.sql 2>&1)
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ] || ! grep -q 'Possible data-bearing SQL' <<< "$error"; then
+            echo "FAIL: expected refusal of application data, not a syntax/runtime error"
+            exit 1
+          fi
+          echo "PASS: structure-only guard refused application data"
+      - name: Refuse a disguised row insertion after isolated import
+        shell: bash
+        run: |
+          cp tests/release/fixtures/existing-schema-structure-only.ddl /tmp/nonius-disguised-row.sql
+          printf "\n/* Comment */ INSERT INTO schools(id,name,data) VALUES('id','do-not-export','{}');\n" >> /tmp/nonius-disguised-row.sql
+          set +e
+          error=$(pwsh -NoProfile -File ./scripts/Inspect-ExistingSchema.ps1 -SchemaSqlPath /tmp/nonius-disguised-row.sql 2>&1)
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ] || ! grep -q 'One or more tables contains actual rows' <<< "$error"; then
+            echo "FAIL: expected zero-row refusal, got a different error"
+            echo "$error"
+            exit 1
+          fi
+          echo "PASS: zero-row guard rejected a disguised inserted record"
+      - name: Import synthetic schema in isolated Docker and generate metadata-only report
+        shell: bash
+        run: |
+          pwsh -NoProfile -File ./scripts/Inspect-ExistingSchema.ps1 -SchemaSqlPath /tmp/nonius-fixture.sql
+      - name: Check schema metadata and private-data omissions
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const d = JSON.parse(fs.readFileSync('schema-preflight-results/existing-schema-report.json','utf8'));
+          if (d.report_type !== 'SCHEMA_ONLY_NO_PRODUCTION_RECORDS' ||
+              d.source_data_rows_inspected !== false || d.source_data_sanitized !== false ||
+              d.production_approval !== 'PENDING') throw new Error('Unsafe or inaccurate report status');
+          if (d.schema.tables.length !== 7 || d.schema.triggers.length !== 1 ||
+              d.schema.foreign_keys.length !== 3) throw new Error('Missing structural metadata');
+          if (d.schema.columns.length < 20) throw new Error('Column inventory was incomplete');
+          const json = JSON.stringify(d);
+          if (json.includes('offline-schema-root-only') || json.includes('offline-schema-probe-only')) {
+              throw new Error('Test database credential leaked into report');
+          }
+          console.log('PASS: seven schema tables, one trigger, three FKs; zero application data');
+          NODE
+      - name: Exercise real Docker+Playwright and legacy migration 037 with fictional records
+        shell: bash
+        run: |
+          set +e
+          pwsh -NoProfile -File ./scripts/Test-ExistingSchemaDockerPlaywright.ps1 -SchemaReportPath ./schema-preflight-results/existing-schema-report.json
+          exit_code=$?
+          set -e
+          # The 7-table fictional fixture has *intentional* schema drift from
+          # a current 21-table source, hence the documented exit code 2.
+          if [ "$exit_code" -ne 2 ]; then
+            echo "FAIL: expected Playwright pass plus structural-review exit 2, got $exit_code"
+            exit 1
+          fi
+          node - <<'NODE'
+          const fs=require('fs');
+          const dir='existing-compat-results/';
+          const summary=JSON.parse(fs.readFileSync(dir+'compatibility-summary.json','utf8'));
+          const rehearsal=JSON.parse(fs.readFileSync(dir+'migration037-rehearsal.json','utf8'));
+          if(summary.technical_result!=='PLAYWRIGHT_PASS_SCHEMA_DRIFT_REVIEW_REQUIRED' ||
+             summary.playwright.passed!==12 || summary.playwright.failed!==0 ||
+             summary.synthetic_migration037_rehearsal_passed!==true ||
+             rehearsal.status!=='passed' ||
+             rehearsal.initial.triggers!==15 ||
+             rehearsal.simulated_old_schema.triggers!==14 ||
+             rehearsal.post_migration.triggers!==15 ||
+             !rehearsal.checks.closed_month_hash_tamper_rejected ||
+             summary.production_approval!=='PENDING'){
+             throw Error('Synthetic Playwright/schema/migration037 rehearsal did not complete correctly');
+          }
+          console.log('PASS: 12 Playwright checks, isolated schema drift, 14->15 migration 037, original record totals, tamper rejection and no production approval.');
+          NODE

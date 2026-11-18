@@ -28,3 +28,12 @@ INSTALL_KEY.txt
 # Candidate rehearsal produces local synthetic evidence only.
 staging-results
 release-out
+
+# Never include private source SQL or reports in application Docker images.
+schema-preflight-results
+local-private
+
+existing-compat-results
+
+# Never put local acceptance results or logs in web/container contexts.
+acceptance-results

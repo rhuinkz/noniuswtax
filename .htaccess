@@ -20,3 +20,23 @@ RewriteRule ^(?:lib|storage|bin)/ - [F,L,NC]
   Header always set X-Frame-Options "SAMEORIGIN"
   Header always set Permissions-Policy "geolocation=(), camera=(), microphone=()"
 </IfModule>
+
+# Hide offline schema-preflight infrastructure and local structural reports.
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteRule ^(?:schema-preflight-results|local-private)(?:/|$) - [F,L,NC]
+RewriteRule ^compose\.existing-schema-preflight\.yml$ - [F,L,NC]
+</IfModule>
+
+# Generated local-only Playwright installed-schema evidence.
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteRule ^existing-compat-results(?:/|$) - [F,L,NC]
+RewriteRule ^compose\.existing-schema-compare\.yml$ - [F,L,NC]
+</IfModule>
+
+# Local-only acceptance results are not web accessible.
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteRule ^acceptance-results(?:/|$) - [F,L,NC]
+</IfModule>

@@ -1,5 +1,7 @@
 # NON-IUS Withholding Tax Monitoring
 
+> **Current comprehensive local test:** Run `powershell -ExecutionPolicy Bypass -File .\scripts\Run-FullAcceptance.ps1` on branch `test/existing-install-schema-preflight` after Fetch/Pull. It combines all Docker/Playwright, tax, Form 2307, database backup/restore, exact RC installation/rollback, schema compatibility and migration 037 checks, and creates a single `acceptance-results/acceptance-report.html`. See [One-Command Acceptance Guide](docs/ONE_COMMAND_ACCEPTANCE.md). Legacy commands below are for targeted debugging, not the normal release workflow. **No production authorization.**
+
 **Reviewed baseline: v0.4.56** · PHP + MariaDB/MySQL · DepEd school/Division withholding tax transaction management.
 
 NON-IUS supports school-originated and Division-originated supplier transactions, tax calculation and ATC/source-of-fund configuration, submission and Division checking, controlled corrections and cancellation, BIR Form 2307 PDF preparation, BIR encoding/reconciliation tracking, monthly period controls, reporting and audit history.

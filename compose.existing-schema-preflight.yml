@@ -1,0 +1,54 @@
+# PRIVATE, OFFLINE schema-only preflight. NO web service, NO host ports.
+# Source SQL is a bind-mounted read-only file OUTSIDE the Git repository.
+name: nonius-existing-schema-preflight
+services:
+  db:
+    image: mariadb:11.4
+    restart: "no"
+    environment:
+      MARIADB_ROOT_PASSWORD: offline-schema-root-only
+      MARIADB_DATABASE: nonius_schema_preflight
+      MARIADB_USER: nonius_schema_probe
+      MARIADB_PASSWORD: offline-schema-probe-only
+    volumes:
+      - schema-preflight-db:/var/lib/mysql
+    networks: [privateonly]
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+  inspector:
+    image: mariadb:11.4
+    restart: "no"
+    profiles: ["manual"]
+    environment:
+      DB_HOST: db
+      DB_NAME: nonius_schema_preflight
+      DB_USER: nonius_schema_probe
+      DB_PASS: offline-schema-probe-only
+    volumes:
+      - type: bind
+        source: ${NONIUS_SCHEMA_SQL_PATH:?Provide an absolute external structure-only SQL export path}
+        target: /inspection/input.sql
+        read_only: true
+      - type: bind
+        source: ./tests/release/existing-schema-report.ddl
+        target: /inspection/report.sql
+        read_only: true
+      - type: bind
+        source: ./tests/release/existing-schema-no-rows.ddl
+        target: /inspection/zero-rows.sql
+        read_only: true
+    networks: [privateonly]
+    depends_on:
+      db:
+        condition: service_healthy
+    read_only: true
+    tmpfs: [/tmp]
+networks:
+  privateonly:
+    internal: true
+volumes:
+  schema-preflight-db: {}

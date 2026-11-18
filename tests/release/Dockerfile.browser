@@ -8,6 +8,9 @@ COPY tests/release/playwright.config.cjs ./playwright.config.cjs
 COPY tests/release/report.cjs ./report.cjs
 COPY tests/release/candidate-upgrade.cjs ./candidate-upgrade.cjs
 COPY tests/release/candidate-rollback.cjs ./candidate-rollback.cjs
+COPY tests/release/schema-compare-core.cjs ./schema-compare-core.cjs
+COPY tests/release/compare-existing-schema.cjs ./compare-existing-schema.cjs
+COPY tests/release/migration037-legacy-check.cjs ./migration037-legacy-check.cjs
 COPY tests/release/specs ./specs
 COPY assets/app.js ./assets/app.js
 COPY assets/login-slideshow.js ./assets/login-slideshow.js

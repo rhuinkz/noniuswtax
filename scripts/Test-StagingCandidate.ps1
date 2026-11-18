@@ -6,6 +6,14 @@ Set-StrictMode -Version Latest
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 Set-Location $root
 $candidateName = 'noniuswtax-0.4.57-rc.1-STAGING-ONLY-adf3fb4.zip'
+$expectedCandidateHash = 'e8d1fe062073f81d68bd0c2707951a0dcae1543a8d5c1aa0dd074a1e5ccb367a'
+if ($env:NONIUS_TEST_CI_MODE -eq 'true') {
+    if ($env:GITHUB_ACTIONS -ne 'true' -or $PSVersionTable.PSEdition -ne 'Core' -or
+        $env:NONIUS_TEST_ZIP_SHA256 -notmatch '^[a-f0-9]{64}$') {
+        throw 'Cross-platform ZIP override permitted only for synthetic Linux GitHub Actions.'
+    }
+    $expectedCandidateHash = $env:NONIUS_TEST_ZIP_SHA256
+}
 $candidate = Join-Path (Join-Path $root 'release-out') $candidateName
 $results = Join-Path $root 'staging-results'
 if (!(Test-Path -LiteralPath $candidate)) { throw "Missing built candidate ZIP: $candidate" }
@@ -92,7 +100,8 @@ $summary = [ordered]@{
     timestamp_utc = (Get-Date).ToUniversalTime().ToString('o')
     rehearsal_status = if ($allOk) {'PASS'} else {'FAIL'}
     candidate_version = '0.4.57-rc.1'
-    candidate_sha256 = 'e8d1fe062073f81d68bd0c2707951a0dcae1543a8d5c1aa0dd074a1e5ccb367a'
+    candidate_sha256 = $expectedCandidateHash
+    ci_cross_platform_repacked = ($env:NONIUS_TEST_CI_MODE -eq 'true')
     source_commit = 'adf3fb4bdce027f65c2a18de2ca4d94e8424e35f'
     synthetic_installation_and_12_tests = $playwrightOk
     in_app_update_review_and_install = $upgradeOk

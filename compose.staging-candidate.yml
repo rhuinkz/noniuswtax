@@ -9,6 +9,10 @@ services:
       - candidate-rollback-backups:/staging-backups:ro
       - ./staging-results:/suite-output
   browser:
+    environment:
+      NONIUS_TEST_CI_MODE: ${NONIUS_TEST_CI_MODE:-false}
+      NONIUS_TEST_ZIP_SHA256: ${NONIUS_TEST_ZIP_SHA256:-}
+      GITHUB_ACTIONS: ${GITHUB_ACTIONS:-false}
     volumes:
       - ./release-out:/suite/candidate:ro
       - ./staging-results:/suite/output

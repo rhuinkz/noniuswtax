@@ -23,6 +23,8 @@
 | Source commit and full synthetic 12/12 test suite | Technical reviewer | 2026-11-16 JSON test report; checksum/commit linkage confirmed | **AUTOMATED PASS; independent reviewer PENDING** |
 | Candidate ZIP archive + SHA-256 + manifest | Release engineer | 2026-11-16 owner build + matching Windows CI; 27 file SHA-256 checks | **AUTOMATED PASS; reviewer/signature PENDING** |
 | Disposable synthetic update/rollback rehearsal | Technical reviewer | 2026-11-16 uploaded `staging-summary.json`: PASS; 12/12 tests, 10,003 transactions, 15 triggers, code and DB restoration flagged passed | **AUTOMATED PASS; reviewer PENDING** |
+| Full one-command Windows synthetic acceptance — exact pinned ZIP, 36/36 cumulative Playwright, backup/rollback, schema and simulated 037 recovery | Technical reviewer | 2026-11-18 owner `acceptance-summary.json`, 04:17 UTC; all three suites PASS, known 037 gap | **AUTOMATED PASS; reviewer PENDING** |
+| Existing installed-schema migration 037 | Database/release administrator | Owner read-only phpMyAdmin 2026-11-18: no migration row; installed 14 vs source 15 triggers | **KNOWN GAP; staged migration review PENDING** |
 | Upgrade on real-world-representative sanitized staging clone | Database/release administrator | — | **PENDING** |
 | Downgrade/rollback rehearsal with restored triggers | Database/release administrator | — | **PENDING** |
 | VAT/EWT/ATC rule and effective-date validation | Authorized finance / tax representative | — | **PENDING** |
@@ -40,6 +42,14 @@
 Owner-provided files report successful synthetic upgrade/rollback against candidate SHA-256 `e8d1fe062073f81d68bd0c2707951a0dcae1543a8d5c1aa0dd074a1e5ccb367a`. The source was a **newly installed disposable synthetic environment**, not a historical data clone. Its rollback was automatically verified, but the independent authorized recovery sign-off remains blank. The version was temporarily stale in two anonymous requests, then updated on the third; this is consistent with opcode caching and warrants post-update monitoring in staging.
 
 `staging-summary.json` timestamp: `2026-11-16T07:32:47.9919853Z`. Evidence records are held by the owner and must be archived privately. **No signature or production approval was given by this automated test.**
+
+### Consolidated Windows acceptance evidence — 2026-11-18
+
+The owner submitted a Windows run of `scripts/Run-FullAcceptance.ps1`, with **zero preflight errors**. The summary shows `exact_windows_zip_tested=true`, candidate SHA-256 `e8d1fe062073f81d68bd0c2707951a0dcae1543a8d5c1aa0dd074a1e5ccb367a`, and **12/12 Playwright PASS in each of three independent synthetic suites**. Full candidate installation and code/SQL rollback PASS. Source/golden tax smoke, synthetic Form 2307 rendering, informational load probes, and backup/restore PASS. The real site's structure-only metadata is 21 tables, 177 columns, 14 triggers: exactly one missing trigger `protect_checked_hash_period_update`, for migration `037_checked_hash_period_guard`. The owner also confirmed via a **read-only query** that migration 037 has no history row on the installed database.
+
+Master status: **`AUTOMATED_PASS_PENDING_MIGRATION_037_REVIEW`**, exit **2**, at `2026-11-18T04:17:07.3270810Z`. This exit code means **known structural review**, not automated failure. The corresponding fixture simulation successfully re-added trigger 037 and rejected prohibited checked-hash updates after closing a period, using synthetic data exclusively.
+
+**Not tested / not approved:** applying migration 037 on the installed site; sanitized actual historical data clone and rollback; regulatory sign-off; Hostinger security; target load; real backup recovery; independent release approval. All signature blocks remain blank. **PRODUCTION = NO-GO**.
 
 ## Reviewer declarations
 
