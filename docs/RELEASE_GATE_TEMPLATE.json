@@ -1,0 +1,142 @@
+{
+  "schema_version": "NONIUSWTAX_PRODUCTION_GATE_EVIDENCE_V1",
+  "confidentiality": "REFERENCES_ONLY_NO_REAL_RECORDS_OR_SECRETS",
+  "synthetic_evidence": false,
+  "project": "NONIUSWTAX",
+  "release": {
+    "source_commit": "adf3fb4bdce027f65c2a18de2ca4d94e8424e35f",
+    "tested_candidate_version": "0.4.57-rc.1",
+    "tested_candidate_sha256": "e8d1fe062073f81d68bd0c2707951a0dcae1543a8d5c1aa0dd074a1e5ccb367a",
+    "production_artifact_version": null,
+    "production_artifact_sha256": null,
+    "last_artifact_retest_sha256": null,
+    "owner_authorized_change_id": null
+  },
+  "verified_synthetic_baseline": {
+    "date": "2026-11-18",
+    "test_status": "AUTOMATED_PASS_PENDING_MIGRATION_037_REVIEW",
+    "cumulative_playwright_passed": 36,
+    "original_site_historical_upgrade_tested": false,
+    "known_migration037_no_row": true,
+    "actual_schema_triggers": 14,
+    "source_schema_triggers": 15,
+    "approval_conferred": false
+  },
+  "gates": [
+    {
+      "id": "R0",
+      "name": "Read-only live baseline and environment identity",
+      "reviewer_role": "database_release_administrator",
+      "status": "PENDING",
+      "evidence_id": null,
+      "reviewed_at_utc": null,
+      "signoff_record_id": null,
+      "artifact_sha256": null,
+      "scope": "STAGING_OR_READ_ONLY_ONLY",
+      "notes": null
+    },
+    {
+      "id": "R1",
+      "name": "Independent encrypted off-site backups and restored recovery proof",
+      "reviewer_role": "database_recovery_reviewer",
+      "status": "PENDING",
+      "evidence_id": null,
+      "reviewed_at_utc": null,
+      "signoff_record_id": null,
+      "artifact_sha256": null,
+      "scope": "STAGING_OR_READ_ONLY_ONLY",
+      "notes": null
+    },
+    {
+      "id": "R2",
+      "name": "Approved privacy-safe historical clone / secure replica",
+      "reviewer_role": "privacy_information_owner",
+      "status": "PENDING",
+      "evidence_id": null,
+      "reviewed_at_utc": null,
+      "signoff_record_id": null,
+      "artifact_sha256": null,
+      "scope": "STAGING_OR_READ_ONLY_ONLY",
+      "notes": null
+    },
+    {
+      "id": "R3",
+      "name": "Actual historical installation staging upgrade and migration 037",
+      "reviewer_role": "database_release_administrator",
+      "status": "PENDING",
+      "evidence_id": null,
+      "reviewed_at_utc": null,
+      "signoff_record_id": null,
+      "artifact_sha256": null,
+      "scope": "STAGING_OR_READ_ONLY_ONLY",
+      "notes": null
+    },
+    {
+      "id": "R4",
+      "name": "Matched code and database historical rollback rehearsal",
+      "reviewer_role": "database_recovery_reviewer",
+      "status": "PENDING",
+      "evidence_id": null,
+      "reviewed_at_utc": null,
+      "signoff_record_id": null,
+      "artifact_sha256": null,
+      "scope": "STAGING_OR_READ_ONLY_ONLY",
+      "notes": null
+    },
+    {
+      "id": "R5",
+      "name": "Independent BIR tax calculations and printed 2307 approval",
+      "reviewer_role": "finance_tax_reviewer",
+      "status": "PENDING",
+      "evidence_id": null,
+      "reviewed_at_utc": null,
+      "signoff_record_id": null,
+      "artifact_sha256": null,
+      "scope": "STAGING_OR_READ_ONLY_ONLY",
+      "notes": null
+    },
+    {
+      "id": "R6",
+      "name": "Independent Hostinger security, role, privacy and configuration review",
+      "reviewer_role": "security_reviewer",
+      "status": "PENDING",
+      "evidence_id": null,
+      "reviewed_at_utc": null,
+      "signoff_record_id": null,
+      "artifact_sha256": null,
+      "scope": "STAGING_OR_READ_ONLY_ONLY",
+      "notes": null
+    },
+    {
+      "id": "R7",
+      "name": "Representative target load and owner/user acceptance",
+      "reviewer_role": "performance_uat_reviewer",
+      "status": "PENDING",
+      "evidence_id": null,
+      "reviewed_at_utc": null,
+      "signoff_record_id": null,
+      "artifact_sha256": null,
+      "scope": "STAGING_OR_READ_ONLY_ONLY",
+      "notes": null
+    },
+    {
+      "id": "R8",
+      "name": "Final artifact provenance, change freeze and signed release dossier",
+      "reviewer_role": "release_change_authority",
+      "status": "PENDING",
+      "evidence_id": null,
+      "reviewed_at_utc": null,
+      "signoff_record_id": null,
+      "artifact_sha256": null,
+      "scope": "STAGING_OR_READ_ONLY_ONLY",
+      "notes": null
+    }
+  ],
+  "formal_change_decision": {
+    "status": "PENDING",
+    "authorized_approver_reference": null,
+    "signed_change_record_id": null,
+    "decided_at_utc": null
+  },
+  "notice": "Template is intentionally unsigned and wholly unapproved. Fill only with privately retained independent evidence and authorized reviewer sign-off. The script cannot authenticate a real signature and never grants deployment."
+}
