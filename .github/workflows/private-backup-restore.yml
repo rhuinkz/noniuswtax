@@ -37,7 +37,7 @@ jobs:
           tables=core+extra
           cols={name:['id VARCHAR(64) PRIMARY KEY'] for name in tables}
           cols['schema_migrations']=['id VARCHAR(100) PRIMARY KEY','status VARCHAR(20) NOT NULL']
-          cols['transactions']=['id VARCHAR(64) PRIMARY KEY','checked_snapshot_hash CHAR(64) NULL']+[f'fake_col_{i:03d} VARCHAR(50) NULL' for i in range(154)]
+          cols['transactions']=['id VARCHAR(64) PRIMARY KEY','checked_snapshot_hash CHAR(64) NULL']+[f'fake_col_{i:03d} TINYINT NULL' for i in range(154)]
           assert sum(len(c) for c in cols.values()) == 177
           ddl=['CREATE TABLE '+name+' ('+','.join(cols[name])+') ENGINE=InnoDB;' for name in tables]
           for i,name in enumerate(extra,1):
