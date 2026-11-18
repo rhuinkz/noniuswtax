@@ -34,3 +34,9 @@ RewriteEngine On
 RewriteRule ^existing-compat-results(?:/|$) - [F,L,NC]
 RewriteRule ^compose\.existing-schema-compare\.yml$ - [F,L,NC]
 </IfModule>
+
+# Local-only acceptance results are not web accessible.
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteRule ^acceptance-results(?:/|$) - [F,L,NC]
+</IfModule>
