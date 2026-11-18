@@ -38,7 +38,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          pwsh -NoProfile -File ./scripts/Run-FullAcceptance.ps1
+          pwsh -NoProfile -File ./scripts/Run-FullAcceptance.ps1 -CICrossPlatformZip
           code=$?
           set -e
           # CI's seven-table structural fixture intentionally differs from the
@@ -57,6 +57,9 @@ jobs:
              r.production_release!=='NO_GO_PENDING_MANUAL_APPROVAL' ||
              r.actual_production_database_accessed!==false ||
              r.real_installed_upgrade_tested!==false ||
+             r.ci_cross_platform_zip_repacked!==true ||
+             r.exact_windows_zip_tested!==false ||
+             r.candidate_sha256===r.reference_windows_zip_sha256 ||
              r.gates[0].status!=='PASS' ||
              r.gates[1].status!=='PASS' ||
              r.gates[2].status!=='PASS' ||
@@ -75,5 +78,6 @@ jobs:
              !checks.checks.closed_month_hash_tamper_rejected){
              throw Error('Mandatory 037 synthetic recovery not fully verified');
           }
+          console.log('PASS synthetic Linux-repacked ZIP only; NOT the exact Windows candidate.');
           console.log('PASS one-command complete package: synthetic source/tax/PDF/browser/load/backup, exact ZIP update/rollback, schema and 037 recovery. Production still NO-GO.');
           NODE
