@@ -27,3 +27,10 @@ RewriteEngine On
 RewriteRule ^(?:schema-preflight-results|local-private)(?:/|$) - [F,L,NC]
 RewriteRule ^compose\.existing-schema-preflight\.yml$ - [F,L,NC]
 </IfModule>
+
+# Generated local-only Playwright installed-schema evidence.
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteRule ^existing-compat-results(?:/|$) - [F,L,NC]
+RewriteRule ^compose\.existing-schema-compare\.yml$ - [F,L,NC]
+</IfModule>
