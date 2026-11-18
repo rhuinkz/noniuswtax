@@ -79,6 +79,7 @@ async function main(){
    assert(after.transaction_count===record.initial.transaction_count&&
       after.audit_count===record.initial.audit_count&&
       after.transaction_history_count===record.initial.transaction_history_count&&
+      after.migration_count===record.initial.migration_count&&
       after.sample_hash===record.initial.sample_hash,
       'Synthetic historical transaction, audit or hash preservation failed.');
    // Demonstrate that the restored trigger blocks hash-only tampering in
