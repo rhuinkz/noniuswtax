@@ -187,6 +187,8 @@ try {
             'environment'=>'DISPOSABLE_OFFLINE_CLI_DOCKER',
             'original_database_rows_imported'=>true,
             'original_database_values_exported_in_report'=>false,
+            'isolated_trigger_definers_normalized'=>true,
+            'production_trigger_definer_permissions_verified'=>false,
             'production_site_modified'=>false,
             'original_tables'=>$status['tables'],
             'original_columns'=>$status['columns'],
