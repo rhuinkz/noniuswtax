@@ -1,0 +1,79 @@
+name: One big NONIUSWTAX acceptance package (SYNTHETIC ONLY)
+on:
+  pull_request:
+    paths:
+      - 'scripts/Run-FullAcceptance.ps1'
+      - '.github/workflows/one-big-acceptance.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  full-single-command-rehearsal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: PowerShell parses the complete single-command runner
+        shell: pwsh
+        run: |
+          $tokens=$null
+          $parseErrors=$null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path scripts/Run-FullAcceptance.ps1).Path,
+            [ref]$tokens,[ref]$parseErrors) | Out-Null
+          if($parseErrors.Count -gt 0){
+            $parseErrors | ForEach-Object {Write-Error $_.Message}
+            throw 'One-command runner PowerShell syntax invalid'
+          }
+      - name: Generate metadata-only local fixture (no real records)
+        shell: bash
+        run: |
+          cp tests/release/fixtures/existing-schema-structure-only.ddl /tmp/nonius-structure-only.sql
+          pwsh -NoProfile -File ./scripts/Inspect-ExistingSchema.ps1 -SchemaSqlPath /tmp/nonius-structure-only.sql
+      - name: Execute ONE comprehensive command including all three disposable suites
+        shell: bash
+        run: |
+          set +e
+          pwsh -NoProfile -File ./scripts/Run-FullAcceptance.ps1
+          code=$?
+          set -e
+          # CI's seven-table structural fixture intentionally differs from the
+          # 21-table real app; all synthetic technical gates must still pass.
+          if [ "$code" -ne 2 ]; then
+            echo "FAIL: expected technically passing fixture with schema-review code 2, got $code"
+            exit 1
+          fi
+          node - <<'NODE'
+          const fs=require('fs');
+          const root='acceptance-results/';
+          const r=JSON.parse(fs.readFileSync(root+'acceptance-summary.json','utf8'));
+          if(r.package!=='NONIUSWTAX_ONE_COMMAND_ACCEPTANCE_V1' ||
+             r.exit_code!==2 ||
+             r.automated_result!=='AUTOMATED_PASS_UNEXPECTED_SCHEMA_DRIFT_REVIEW' ||
+             r.production_release!=='NO_GO_PENDING_MANUAL_APPROVAL' ||
+             r.actual_production_database_accessed!==false ||
+             r.real_installed_upgrade_tested!==false ||
+             r.gates[0].status!=='PASS' ||
+             r.gates[1].status!=='PASS' ||
+             r.gates[2].status!=='PASS' ||
+             r.gates[3].status!=='REVIEW_REQUIRED' ||
+             r.stage_processes.length<4 ||
+             !fs.existsSync(root+'acceptance-report.html') ||
+             !fs.existsSync('test-results/release-summary.json') ||
+             !fs.existsSync('staging-results/staging-rollback.json') ||
+             !fs.existsSync('existing-compat-results/migration037-rehearsal.json')) {
+             throw Error('One-command acceptance report inaccurate, stale, or missing independent evidence');
+          }
+          const checks=JSON.parse(fs.readFileSync('existing-compat-results/migration037-rehearsal.json'));
+          if(checks.status!=='passed'||checks.initial.triggers!==15||
+             checks.simulated_old_schema.triggers!==14||
+             checks.post_migration.triggers!==15||
+             !checks.checks.closed_month_hash_tamper_rejected){
+             throw Error('Mandatory 037 synthetic recovery not fully verified');
+          }
+          console.log('PASS one-command complete package: synthetic source/tax/PDF/browser/load/backup, exact ZIP update/rollback, schema and 037 recovery. Production still NO-GO.');
+          NODE
