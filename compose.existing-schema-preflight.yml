@@ -34,11 +34,11 @@ services:
         target: /inspection/input.sql
         read_only: true
       - type: bind
-        source: ./tests/release/existing-schema-report.sql
+        source: ./tests/release/existing-schema-report.ddl
         target: /inspection/report.sql
         read_only: true
       - type: bind
-        source: ./tests/release/existing-schema-no-rows.sql
+        source: ./tests/release/existing-schema-no-rows.ddl
         target: /inspection/zero-rows.sql
         read_only: true
     networks: [privateonly]
