@@ -126,3 +126,34 @@ jobs:
           }
           console.log('PASS: seven schema tables, one trigger, three FKs; zero application data');
           NODE
+      - name: Exercise real Docker+Playwright and legacy migration 037 with fictional records
+        shell: bash
+        run: |
+          set +e
+          pwsh -NoProfile -File ./scripts/Test-ExistingSchemaDockerPlaywright.ps1 -SchemaReportPath ./schema-preflight-results/existing-schema-report.json
+          exit_code=$?
+          set -e
+          # The 7-table fictional fixture has *intentional* schema drift from
+          # a current 21-table source, hence the documented exit code 2.
+          if [ "$exit_code" -ne 2 ]; then
+            echo "FAIL: expected Playwright pass plus structural-review exit 2, got $exit_code"
+            exit 1
+          fi
+          node - <<'NODE'
+          const fs=require('fs');
+          const dir='existing-compat-results/';
+          const summary=JSON.parse(fs.readFileSync(dir+'compatibility-summary.json','utf8'));
+          const rehearsal=JSON.parse(fs.readFileSync(dir+'migration037-rehearsal.json','utf8'));
+          if(summary.technical_result!=='PLAYWRIGHT_PASS_SCHEMA_DRIFT_REVIEW_REQUIRED' ||
+             summary.playwright.passed!==12 || summary.playwright.failed!==0 ||
+             summary.synthetic_migration037_rehearsal_passed!==true ||
+             rehearsal.status!=='passed' ||
+             rehearsal.initial.triggers!==15 ||
+             rehearsal.simulated_old_schema.triggers!==14 ||
+             rehearsal.post_migration.triggers!==15 ||
+             !rehearsal.checks.closed_month_hash_tamper_rejected ||
+             summary.production_approval!=='PENDING'){
+             throw Error('Synthetic Playwright/schema/migration037 rehearsal did not complete correctly');
+          }
+          console.log('PASS: 12 Playwright checks, isolated schema drift, 14->15 migration 037, original record totals, tamper rejection and no production approval.');
+          NODE
