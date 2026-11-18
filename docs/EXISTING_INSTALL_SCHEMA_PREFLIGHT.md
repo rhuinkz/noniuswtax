@@ -79,6 +79,26 @@ You can share **only** `compatibility-summary.json` and `existing-schema-compari
 
 This check measures installed structural **differences**, not an upgrade of its historical records. Full data sanitization, protected hash handling and actual installed-state rollback remain separate required gates.
 
+## 3B. Installed schema drift result — 18 November 2026
+
+The owner ran `scripts/Test-ExistingSchemaDockerPlaywright.ps1` locally and provided the console log. The **12/12 Chromium Playwright tests PASSED**, including authentication/roles, Form 2307 generation, integrity guards, and 10,000 synthetic transactions. The current source and the **real site's structure-only report** each contain **21 tables and 177 columns**. The current source has **15 triggers**, while the installed structure-only report has **14**. Comparison result: `DRIFT_REVIEW_REQUIRED` with **one missing structure item**, zero extras, and zero changed column definitions.
+
+The *only* discrepancy reported by the console log is that the installed schema lacks mandatory **`protect_checked_hash_period_update`**, a `BEFORE UPDATE` trigger on `transactions`. Its source is migration **`037_checked_hash_period_guard`** (mandatory in `lib/migrations.php`). It blocks changing `checked_snapshot_hash` while the corresponding month is not open/reopened.
+
+**Important limitation:** The schema-only export provides no `schema_migrations` data, so the installed site's migration **037 status remains unknown**. The migration engine skips IDs whose status is already `applied` or `skipped`. Consequently an erroneously recorded `applied` migration with a missing trigger might not self-repair. We must read the *single migration status*, without any production data rows, before staging deployment decisions. **Do not create/delete the trigger manually on Hostinger or change production migration history.**
+
+The test branch now includes an **additional isolated local migration rehearsal** in the same one-command Docker + Playwright runner. After a fresh synthetic installation, it temporarily removes exactly trigger 037 and its migration-history record from the disposable database, launches a new PHP bootstrap to execute the **normal migration runner**, and checks that the trigger is restored, preexisting synthetic transactions/audit/history and checked hashes are unchanged, and a closed-period hash change is refused. Its result is `existing-compat-results/migration037-rehearsal.json`. It must be executed locally; **do not mark this new rehearsal PASS based on the earlier 12-test run**.
+
+A read-only query that the authorized administrator may run separately against the existing database to establish migration state is:
+
+```sql
+SELECT id, status
+FROM schema_migrations
+WHERE id = '037_checked_hash_period_guard';
+```
+
+Only the result of this single migration-status query should be shared; do not export the `schema_migrations` table or any real records. If no row exists, report **NOT PRESENT**. If the status is `applied` despite the missing trigger, flag it as a separate integrity defect requiring an approved recovery plan and staged repair. The trigger count discrepancy alone is not approval to run SQL or modify the live site.
+
 ## 4. Next gated technical work (not yet authorized)
 
 Once the structural report is reviewed:
@@ -95,7 +115,7 @@ Once the structural report is reviewed:
 |---|---|
 | Full disposable synthetic tests, upgrade and rollback | PASS (already recorded; distinct from this task) |
 | Existing deployed database **schema-only** inventory | 21 tables, 177 columns, 14 triggers; local zero-row preflight PASS (console log) |
-| Local Docker + Playwright installed-schema drift comparison | PREPARED; awaiting owner's execution |
+| Local Docker + Playwright installed-schema drift comparison | 12/12 PASS; 21 tables/177 columns match; missing one mandatory migration 037 trigger — REVIEW REQUIRED |
 | Existing historical data sanitization and realistic clone verification | NOT STARTED |
 | Real-hosting security, authorized BIR/finance and release approval | PENDING |
 
