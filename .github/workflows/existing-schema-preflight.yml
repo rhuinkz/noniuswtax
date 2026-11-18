@@ -5,6 +5,7 @@ on:
       - 'compose.existing-schema-preflight.yml'
       - 'scripts/Inspect-ExistingSchema.ps1'
       - 'tests/release/existing-schema-report.sql'
+      - 'tests/release/existing-schema-no-rows.sql'
       - 'tests/release/fixtures/existing-schema-structure-only.sql'
       - '.github/workflows/existing-schema-preflight.yml'
   workflow_dispatch:
@@ -32,6 +33,16 @@ jobs:
             exit 1
           fi
           echo "PASS: structure-only gate refused application data"
+      - name: Refuse a disguised row insertion after isolated import
+        shell: bash
+        run: |
+          cp tests/release/fixtures/existing-schema-structure-only.sql /tmp/nonius-disguised-row.sql
+          printf "\n/* Comment */ INSERT INTO schools(id,name,data) VALUES('id','do-not-export','{}');\n" >> /tmp/nonius-disguised-row.sql
+          if pwsh -NoProfile -File ./scripts/Inspect-ExistingSchema.ps1 -SchemaSqlPath /tmp/nonius-disguised-row.sql; then
+            echo "FAIL: non-empty source database was accepted as structure only"
+            exit 1
+          fi
+          echo "PASS: zero-row inspection refused disguised application data"
       - name: Import synthetic schema in isolated Docker and generate metadata-only report
         shell: bash
         run: |
