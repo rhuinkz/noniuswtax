@@ -8,7 +8,10 @@ const crypto = require('crypto');
 const BASE = process.env.BASE_URL || 'http://web';
 const OUT = '/suite/output';
 const VERSION = '0.4.57-rc.1';
-const EXPECTED_SHA = 'e8d1fe062073f81d68bd0c2707951a0dcae1543a8d5c1aa0dd074a1e5ccb367a';
+const EXPECTED_SHA = process.env.NONIUS_TEST_CI_MODE === 'true' && process.env.GITHUB_ACTIONS === 'true'
+  ? process.env.NONIUS_TEST_ZIP_SHA256
+  : 'e8d1fe062073f81d68bd0c2707951a0dcae1543a8d5c1aa0dd074a1e5ccb367a';
+if (!/^[a-f0-9]{64}$/.test(EXPECTED_SHA)) throw Error('Invalid test ZIP SHA-256 override.');
 const CANDIDATE = '/suite/candidate/noniuswtax-0.4.57-rc.1-STAGING-ONLY-adf3fb4.zip';
 const EVIDENCE = OUT + '/staging-upgrade.json';
 function check(condition, message) { if (!condition) throw Error(message); }
