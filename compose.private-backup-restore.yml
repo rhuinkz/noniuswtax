@@ -32,10 +32,11 @@ services:
       DB_NAME: nonius_private_restore
       DB_USER: nonius_private_import
       DB_PASS: nonius-local-restore-only
+      SQL_FORMAT: ${NONIUS_PRIVATE_SQL_FORMAT:-plain}
     volumes:
       - type: bind
         source: ${NONIUS_PRIVATE_SQL_PATH:?Provide the external private SQL export path}
-        target: /private/input.sql
+        target: /private/input.backup
         read_only: true
       - type: bind
         source: ./tests/release/private-backup-restore-report.ddl
