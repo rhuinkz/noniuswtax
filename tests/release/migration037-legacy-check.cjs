@@ -18,7 +18,7 @@ async function inspect(db){
   const [migrations]=await sql(db,'SELECT status FROM schema_migrations WHERE id=?',[M]);
   const [[tx]]=[await sql(db,'SELECT checked_snapshot_hash FROM transactions WHERE id=?',[TX])];
   const [period]=await sql(db,'SELECT state FROM transaction_periods WHERE period_month=? AND target_key=?',[PERIOD,TARGET]);
-  const [triggerRows]=await sql(db,'SELECT TRIGGER_NAME AS name FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA=DATABASE()');
+  const triggerRows=await sql(db,'SELECT TRIGGER_NAME AS name FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA=DATABASE()');
   return {
     transaction_count: await count('transactions'),
     audit_count:await count('audit'),
