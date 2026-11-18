@@ -1,0 +1,29 @@
+{
+  "format": "NONIUSWTAX_PRODUCTION_APPROVAL_V1",
+  "release_candidate_version": "0.4.57-rc.1",
+  "verified_source_commit": "adf3fb4bdce027f65c2a18de2ca4d94e8424e35f",
+  "staging_zip_sha256": "e8d1fe062073f81d68bd0c2707951a0dcae1543a8d5c1aa0dd074a1e5ccb367a",
+  "production_artifact_version": "",
+  "production_artifact_sha256": "",
+  "production_artifact_attestation_id": "",
+  "gates": {
+    "private_historical_migration_restore": {"status": "PENDING", "reviewer": "", "reviewed_at": "", "evidence_id": ""},
+    "approved_sanitization_no_leaks": {"status": "PENDING", "reviewer": "", "reviewed_at": "", "evidence_id": ""},
+    "sanitized_existing_installation_updater_and_rollback": {"status": "PENDING", "reviewer": "", "reviewed_at": "", "evidence_id": ""},
+    "philippines_bir_tax_rules_and_rates": {"status": "PENDING", "reviewer": "", "reviewed_at": "", "evidence_id": ""},
+    "physical_form_2307_review": {"status": "PENDING", "reviewer": "", "reviewed_at": "", "evidence_id": ""},
+    "hostinger_https_secrets_roles_hardening": {"status": "PENDING", "reviewer": "", "reviewed_at": "", "evidence_id": ""},
+    "privacy_impact_assessment_and_data_handling": {"status": "PENDING", "reviewer": "", "reviewed_at": "", "evidence_id": ""},
+    "target_concurrent_load_and_latency_slo": {"status": "PENDING", "reviewer": "", "reviewed_at": "", "evidence_id": ""},
+    "independent_encrypted_offsite_restore_rto_rpo": {"status": "PENDING", "reviewer": "", "reviewed_at": "", "evidence_id": ""},
+    "final_exact_production_artifact_staging_rehearsal": {"status": "PENDING", "reviewer": "", "reviewed_at": "", "evidence_id": ""},
+    "production_change_window_and_rollback_authority": {"status": "PENDING", "reviewer": "", "reviewed_at": "", "evidence_id": ""}
+  },
+  "final_authorized_decision": {
+    "decision": "PENDING",
+    "authorizing_officer": "",
+    "signed_at": "",
+    "approval_evidence_id": ""
+  },
+  "notes": "Template only. Never fill APPROVED without independently recorded and actually signed evidence. Keep completed approval records in private-release-evidence/ outside Git. Do not upload names, supplier TINs or credentials."
+}
