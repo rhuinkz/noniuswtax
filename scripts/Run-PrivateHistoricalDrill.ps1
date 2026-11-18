@@ -58,7 +58,7 @@ try{
     RunQuietDocker 'Remove this test project previous disposable volumes' ($dc+@('down','--volumes','--remove-orphans'))
     RunQuietDocker 'Build PHP CLI image without private backup' ($dc+@('build','cli'))
     RunQuietDocker 'Start isolated temporary MariaDB' ($dc+@('up','-d','--wait','db'))
-    $importCmd='MYSQL_PWD="$DB_PASS" mariadb --host="$DB_HOST" --user="$DB_USER" --database="$DB_NAME" < /private/input.sql'
+    $importCmd='sed -E -f /private/normalize-trigger-definers.sed /private/input.sql | MYSQL_PWD="$DB_PASS" mariadb --host="$DB_HOST" --user="$DB_USER" --database="$DB_NAME"'
     RunQuietDocker 'Import full SQL only into disposable internal DB' ($dc+@('run','--rm','--no-deps','--entrypoint','sh','importer','-ec',$importCmd))
     $cliScript='/var/www/html/tests/release/private-historical-check.php'
     RunQuietDocker 'Fingerprint all historical rows privately and confirm ONLY migration 037 pending' ($dc+@('run','--rm','--no-deps','cli',$cliScript,'baseline'))
