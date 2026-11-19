@@ -35,6 +35,13 @@ $report=[ordered]@{
     database_backup_sha256=$null
     code_backup_sha256=$null
     code_archive_file_count=$null
+    code_archive_app_root_candidates=$null
+    code_archive_expected_domain_candidates=$null
+    code_archive_inner_archives_count=$null
+    code_archive_site_selection='NOT_INSPECTED'
+    code_archive_selected_root_file_count=$null
+    database_and_site_backup_timestamps_match=$null
+    backup_pair_timestamp_status='NOT_ASSESSED'
     code_archive_version=$null
     code_archive_has_private_config=$false
     code_archive_has_storage=$false
@@ -104,56 +111,104 @@ function ValidateSQL([string]$sqlPath){
     }finally{$payload.Dispose();$raw.Dispose()}
 }
 function InspectSiteArchive([string]$archivePath){
-    $lower=$archivePath.ToLowerInvariant()
-    $names=@(); $versionText=$null
-    if($lower.EndsWith('.zip')){
+    # Hostinger account backups may contain multiple sites or nested packages.
+    # Identify one exact application root; never print private archive paths.
+    $isZip=$archivePath.ToLowerInvariant().EndsWith('.zip')
+    $z=$null; $entries=@(); $names=@()
+    if($isZip){
         Add-Type -AssemblyName System.IO.Compression.FileSystem
         $z=[System.IO.Compression.ZipFile]::OpenRead($archivePath)
-        try{
-            $entries=@($z.Entries|Where-Object {$_.Name -ne ''})
-            $names=@($entries|ForEach-Object {$_.FullName})
-            $boots=@($entries|Where-Object {$_.FullName.Replace('\','/') -match '(^|/)lib/bootstrap\.php$'})
-            if($boots.Count -ne 1){throw 'Code archive must contain exactly one lib/bootstrap.php.'}
-            if($boots[0].Length -gt 1048576){throw 'Unexpected bootstrap size.'}
-            $reader=[System.IO.StreamReader]::new($boots[0].Open())
-            try{$versionText=$reader.ReadToEnd()}finally{$reader.Dispose()}
-        }finally{$z.Dispose()}
-    }elseif($lower.EndsWith('.tar.gz')){
+        $entries=@($z.Entries | Where-Object {$_.Name -ne ''})
+        $names=@($entries | ForEach-Object {$_.FullName})
+    }elseif($archivePath.ToLowerInvariant().EndsWith('.tar.gz')){
         $tar=Get-Command tar -ErrorAction Stop
         $names=@(& $tar.Source -tzf $archivePath 2>$null)
-        if($LASTEXITCODE -ne 0){throw 'Cannot read private .tar.gz file manifest.'}
-        $boots=@($names|Where-Object {$_.Replace('\','/') -match '(^|/)lib/bootstrap\.php$'})
-        if($boots.Count -ne 1){throw 'Site .tar.gz must contain exactly one lib/bootstrap.php.'}
-        $versionText=((& $tar.Source -xOzf $archivePath $boots[0] 2>$null) -join [Environment]::NewLine)
-        if($LASTEXITCODE -ne 0 -or $versionText.Length -gt 1048576){
-            throw 'Cannot privately read code version from site archive.'
+        if($LASTEXITCODE -ne 0){throw 'Could not read TAR.GZ site inventory.'}
+    }else{throw 'Only .zip and .tar.gz website archives are supported.'}
+    try{
+        $lookup=@{}
+        $seen=[System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        foreach($name in $names){
+            $normalized=([string]$name).Replace('\','/')
+            while($normalized.StartsWith('./')){$normalized=$normalized.Substring(2)}
+            if(!$normalized -or $normalized -match '^(?:/|[A-Za-z]:)' -or
+               $normalized -match '(^|/)\.\.(?:/|$)' -or $normalized.Contains([char]0)){
+                throw 'Unsafe website archive path found. No archive data extracted.'
+            }
+            if(!$normalized.EndsWith('/')){
+                if(!$seen.Add($normalized)){throw 'Duplicate normalized website archive path.'}
+                $lookup[$normalized]=[string]$name
+            }
         }
-    }else{throw 'Only .zip and .tar.gz website archives are allowed.'}
-    $seen=[System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-    foreach($name in $names){
-        $normal=([string]$name).Replace('\','/')
-        if($normal -match '^(?:/|[A-Za-z]:)' -or
-           $normal -match '(?:^|/)\.\.(?:/|$)' -or $normal.Contains([char]0)){
-            throw 'Website archive has unsafe paths. No archive contents were unpacked.'
+        $script:report.code_archive_file_count=$lookup.Count
+        $script:report.code_archive_inner_archives_count=@($lookup.Keys | Where-Object {
+            $_ -match '(?i)\.(zip|tar|tar\.gz|tgz)$'
+        }).Count
+        $roots=@($lookup.Keys | Where-Object {$_ -match '(?i)(^|/)lib/bootstrap\.php$'})
+        $script:report.code_archive_app_root_candidates=$roots.Count
+        $expectedDomain='noniuswtax.depedtagb.online'
+        $domainRegex='(?i)(^|/)'+[regex]::Escape($expectedDomain)+'/'
+        $matched=@($roots | Where-Object {$_ -match $domainRegex})
+        $script:report.code_archive_expected_domain_candidates=$matched.Count
+        $selected=$null
+        if($matched.Count -eq 1){
+            $selected=$matched[0]
+            $script:report.code_archive_site_selection='EXPECTED_DOMAIN'
+        }elseif($matched.Count -gt 1){
+            $script:report.code_archive_site_selection='AMBIGUOUS_EXPECTED_DOMAIN'
+            throw 'Multiple application copies under the expected NONIUSWTAX domain. Provide a site-specific backup.'
+        }elseif($roots.Count -eq 1){
+            $selected=$roots[0]
+            # Do not misclassify another domain's application as this site.
+            if($selected -match '(?i)(^|/)(?:domains|sites)/[^/]+/' -or
+               $selected -match '(?i)(^|/)[a-z0-9-]+(?:\.[a-z0-9-]+)+/'){
+                $script:report.code_archive_site_selection='FOREIGN_OR_UNVERIFIED_DOMAIN'
+                throw 'Only one app was found, but its path is assigned to another or unverified domain.'
+            }
+            $script:report.code_archive_site_selection='SINGLE_UNSCOPED_APP'
+        }else{
+            $script:report.code_archive_site_selection=if($roots.Count -eq 0){'NO_APPLICATION_ROOT'}else{'MULTIPLE_UNSCOPED_APPS'}
+            throw ('No uniquely identifiable NONIUSWTAX site: '+$roots.Count+
+              ' app root(s), '+$matched.Count+' expected-domain match(es), '+
+              $script:report.code_archive_inner_archives_count+
+              ' nested archive(s). Select a backup containing the site files, not only nested site packages.')
         }
-        if(!$normal.EndsWith('/')){
-            if(!$seen.Add($normal)){throw 'Website archive has duplicate normalized entry names.'}
+        $prefix=$selected.Substring(0,$selected.Length-'lib/bootstrap.php'.Length)
+        foreach($required in @('update.php','lib/migrations.php','login.php')){
+            if(!$lookup.ContainsKey($prefix+$required)){
+                $script:report.code_archive_site_selection='INCOMPLETE_SITE_ROOT'
+                throw ('Identified site is missing required '+$required+'. Obtain full website files backup.')
+            }
         }
+        if($isZip){
+            $one=@($entries | Where-Object {$_.FullName -ceq $lookup[$selected]})
+            if($one.Count -ne 1){throw 'Cannot resolve unique application bootstrap entry.'}
+            if($one[0].Length -gt 1048576){throw 'Unexpectedly large bootstrap file.'}
+            $reader=[System.IO.StreamReader]::new($one[0].Open())
+            try{$versionText=$reader.ReadToEnd()}finally{$reader.Dispose()}
+        }else{
+            $versionText=((& $tar.Source -xOzf $archivePath $lookup[$selected] 2>$null) -join [Environment]::NewLine)
+            if($LASTEXITCODE -ne 0 -or $versionText.Length -gt 1048576){
+                throw 'Cannot privately read installed application version from the selected site.'
+            }
+        }
+        if($versionText -notmatch "const\s+APP_VERSION\s*=\s*'([^']+)'"){
+            throw 'Identified site lacks NONIUSWTAX APP_VERSION signature.'
+        }
+        $script:report.code_archive_version=$Matches[1]
+        $script:report.code_archive_selected_root_file_count=@($lookup.Keys | Where-Object {
+            $_.StartsWith($prefix,[System.StringComparison]::OrdinalIgnoreCase)
+        }).Count
+        $script:report.code_archive_has_private_config=$lookup.ContainsKey($prefix+'config.local.php')
+        $script:report.code_archive_has_storage=[bool](@($lookup.Keys | Where-Object {
+            $_.StartsWith($prefix+'storage/',[System.StringComparison]::OrdinalIgnoreCase)
+        }).Count)
+        Write-Host ('Archive structural inspection: '+$script:report.code_archive_app_root_candidates+
+          ' application root(s); '+$script:report.code_archive_expected_domain_candidates+
+          ' expected-domain match(es).')
+    }finally{
+        if($null -ne $z){$z.Dispose()}
     }
-    if($names.Count -lt 10){throw 'Website archive has too few entries for complete app recovery.'}
-    if(@($names|Where-Object {$_.Replace('\','/') -match '(^|/)update\.php$'}).Count -ne 1 -or
-       @($names|Where-Object {$_.Replace('\','/') -match '(^|/)lib/migrations\.php$'}).Count -ne 1){
-        throw 'Website archive must contain update.php and lib/migrations.php exactly once.'
-    }
-    if($versionText -notmatch "const\s+APP_VERSION\s*=\s*'([^']+)'"){
-        throw 'No installed APP_VERSION could be read from the website archive.'
-    }
-    $script:report.code_archive_version=$Matches[1]
-    $script:report.code_archive_file_count=@($names|Where-Object {!$_.EndsWith('/')}).Count
-    $script:report.code_archive_has_private_config=
-        [bool](@($names|Where-Object {$_.Replace('\','/') -match '(^|/)config\.local\.php$'}).Count)
-    $script:report.code_archive_has_storage=
-        [bool](@($names|Where-Object {$_.Replace('\','/') -match '(^|/)storage/'}).Count)
 }
 
 Write-Host 'NONIUSWTAX PRIVATE BACKUP RESTORE — DISPOSABLE DOCKER ONLY' -ForegroundColor Cyan
@@ -169,6 +224,19 @@ try{
        @($expected.schema.columns).Count -ne 177 -or
        @($expected.schema.triggers).Count -ne 14){
        throw 'Existing schema-only fingerprint does not match the previously verified 21/177/14 installed site.'
+    }
+    # Filename-derived time is a useful hint, not proof of a consistent snapshot.
+    $sqlT=[regex]::Match([System.IO.Path]::GetFileName($sql),'(?<!\d)20\d{12}(?!\d)')
+    $siteT=[regex]::Match([System.IO.Path]::GetFileName($siteArchive),'(?<!\d)20\d{12}(?!\d)')
+    if($sqlT.Success -and $siteT.Success){
+        $same=$sqlT.Value -ceq $siteT.Value
+        $report.database_and_site_backup_timestamps_match=$same
+        $report.backup_pair_timestamp_status=if($same){'FILENAME_TIMESTAMPS_MATCH_REVIEW_REQUIRED'}else{'DIFFERENT_TIMESTAMPS_REVIEW_REQUIRED'}
+        if(!$same){
+            Write-Host 'NOTICE: SQL and site archives are from different times. A read-only no-change history review is required for independent R1 approval.' -ForegroundColor Yellow
+        }
+    }else{
+        $report.backup_pair_timestamp_status='TIMESTAMP_NOT_PRESENT_IN_BOTH_NAMES'
     }
     Write-Host 'Preflight: validating SQL export safety without displaying its records...'
     ValidateSQL $sql
