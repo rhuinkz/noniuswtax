@@ -5,6 +5,8 @@ on:
       - 'compose.private-backup-restore.yml'
       - 'scripts/Test-PrivateHistoricalBackupRestore.ps1'
       - 'scripts/PrivateNativeOutput.ps1'
+      - 'scripts/Diagnose-PrivateImportLog.ps1'
+      - 'tests/release/private-import-diagnostic-fixture.ps1'
       - 'tests/release/windows-powershell-native-stderr.ps1'
       - 'tests/release/private-backup-restore-report.ddl'
       - 'tests/release/private-backup-foreign-keys.ddl'
@@ -27,6 +29,10 @@ jobs:
             throw 'This regression must run in Windows PowerShell 5.1.'
           }
           & .\tests\release\windows-powershell-native-stderr.ps1
+      - name: Classify fictional confidential import error codes without showing any record text (PS 5.1)
+        shell: powershell
+        run: |
+          & .\tests\release\private-import-diagnostic-fixture.ps1
   isolated-private-restore-fixture:
     runs-on: ubuntu-latest
     timeout-minutes: 18
@@ -40,6 +46,10 @@ jobs:
             (Resolve-Path ./scripts/Test-PrivateHistoricalBackupRestore.ps1).Path,
             [ref]$tokens,[ref]$errors) | Out-Null
           if($errors.Count){$errors|ForEach-Object{Write-Error $_.Message};throw 'Restore script syntax failed'}
+      - name: Classify fictitious private import errors without leaking log lines (PowerShell Core)
+        shell: pwsh
+        run: |
+          & ./tests/release/private-import-diagnostic-fixture.ps1
       - name: Generate completely fictional 21-table, 177-column, 14-trigger data and code archives
         shell: bash
         run: |
