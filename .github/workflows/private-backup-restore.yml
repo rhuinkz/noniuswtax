@@ -1,0 +1,489 @@
+name: Private R1 backup restoration rehearsal (FICTIONAL DATA ONLY)
+on:
+  pull_request:
+    paths:
+      - 'compose.private-backup-restore.yml'
+      - 'scripts/Test-PrivateHistoricalBackupRestore.ps1'
+      - 'scripts/private-recovery-privilege.sh'
+      - 'scripts/PrivateNativeOutput.ps1'
+      - 'scripts/Diagnose-PrivateImportLog.ps1'
+      - 'tests/release/private-import-diagnostic-fixture.ps1'
+      - 'tests/release/windows-powershell-native-stderr.ps1'
+      - 'tests/release/private-backup-restore-report.ddl'
+      - 'tests/release/private-backup-foreign-keys.ddl'
+      - '.github/workflows/private-backup-restore.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-powershell-51-native-stderr:
+    runs-on: windows-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check real Windows PowerShell 5.1 behavior with fictional native stderr
+        shell: powershell
+        run: |
+          if ($PSVersionTable.PSVersion.Major -ne 5) {
+            throw 'This regression must run in Windows PowerShell 5.1.'
+          }
+          & .\tests\release\windows-powershell-native-stderr.ps1
+      - name: Assert Windows-cloned grant/revoke script uses LF and avoids fragile inline shell arguments
+        shell: powershell
+        run: |
+          $runner = Get-Content .\scripts\Test-PrivateHistoricalBackupRestore.ps1 -Raw
+          $localPrivilege = Get-Content .\scripts\private-recovery-privilege.sh -Raw
+          $grant = "`$grantCmd=`$compose+@('exec','-T','db','sh','/private/recovery-privilege.sh','grant')"
+          $revoke = "`$revokeCmd=`$compose+@('exec','-T','db','sh','/private/recovery-privilege.sh','revoke')"
+          if (-not $runner.Contains($grant) -or -not $runner.Contains($revoke)) {
+            throw 'PowerShell must use plain argv with mounted grant/revoke script.'
+          }
+          if ($localPrivilege.Contains("`r")) {
+            throw 'Unix shell helper must keep LF line endings after Git checkout on Windows.'
+          }
+          if ($localPrivilege -notmatch 'MYSQL_PWD=' -or $localPrivilege -notmatch 'SET USER') {
+            throw 'Dedicated disposable DB privilege helper is incomplete.'
+          }
+          Write-Host 'PASS: Windows PowerShell 5.1 has literal nonquoted exec args, local shell script is LF-only.'
+      - name: Classify fictional confidential import error codes without showing any record text (PS 5.1)
+        shell: powershell
+        run: |
+          & .\tests\release\private-import-diagnostic-fixture.ps1
+  isolated-private-restore-fixture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax and Docker isolation assertions
+        shell: pwsh
+        run: |
+          $tokens=$null; $errors=$null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path ./scripts/Test-PrivateHistoricalBackupRestore.ps1).Path,
+            [ref]$tokens,[ref]$errors) | Out-Null
+          if($errors.Count){$errors|ForEach-Object{Write-Error $_.Message};throw 'Restore script syntax failed'}
+      - name: Classify fictitious private import errors without leaking log lines (PowerShell Core)
+        shell: pwsh
+        run: |
+          & ./tests/release/private-import-diagnostic-fixture.ps1
+      - name: Generate completely fictional 21-table, 177-column, 14-trigger data and code archives
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json,zipfile,gzip,tarfile,os,io
+          os.makedirs('schema-preflight-results',exist_ok=True)
+          core=['transactions','schema_migrations','transaction_history','audit','transaction_periods','transaction_period_history','update_history']
+          extra=[f'dummy{i:02d}' for i in range(1,15)]
+          tables=core+extra
+          cols={name:['id VARCHAR(64) PRIMARY KEY'] for name in tables}
+          cols['schema_migrations']=['id VARCHAR(100) PRIMARY KEY','status VARCHAR(20) NOT NULL']
+          cols['transactions']=['id VARCHAR(64) PRIMARY KEY','checked_snapshot_hash CHAR(64) NULL']+[f'fake_col_{i:03d} TINYINT NULL' for i in range(154)]
+          assert sum(len(c) for c in cols.values()) == 177
+          ddl=['CREATE TABLE '+name+' ('+','.join(cols[name])+') ENGINE=InnoDB;' for name in tables]
+          for i,name in enumerate(extra,1):
+              if i == 1:
+                  # A foreign explicit DEFINER reproduces the hosted-user
+                  # 1227 privilege mismatch on a disposable test database.
+                  # The named user is FICTIONAL and does not exist locally.
+                  ddl.append(f'CREATE DEFINER=`ci_fictional_host_user`@`ci_fictional_remote` TRIGGER fake_guard_{i:02d} BEFORE UPDATE ON {name} FOR EACH ROW SET NEW.id=OLD.id;')
+              else:
+                  ddl.append(f'CREATE TRIGGER fake_guard_{i:02d} BEFORE UPDATE ON {name} FOR EACH ROW SET NEW.id=OLD.id;')
+          ddl+=["INSERT INTO transactions (id,checked_snapshot_hash) VALUES ('FICTIONAL-TX','"+"a"*64+"');",
+                "INSERT INTO schema_migrations (id,status) VALUES ('036_example','applied');",
+                "INSERT INTO transaction_history (id) VALUES ('FICTIONAL-HISTORY');",
+                "INSERT INTO audit (id) VALUES ('FICTIONAL-AUDIT');"]
+          sql='\n'.join(ddl)+'\n'
+          with open('/tmp/nonius-fixture.sql','w') as f:f.write(sql)
+          with gzip.open('/tmp/nonius-fixture.sql.gz','wb') as f:f.write(sql.encode())
+          source=['lib/bootstrap.php','lib/migrations.php','update.php','index.php','login.php','api.php',
+                  'assets/style.css','assets/app.js','.htaccess','README.md']
+          with zipfile.ZipFile('/tmp/nonius-fixture-site.zip','w',zipfile.ZIP_DEFLATED) as z:
+              for p in source:z.write(p,p)
+              z.writestr('storage/fake.txt','FICTIONAL NON-SENSITIVE STORAGE')
+          with tarfile.open('/tmp/nonius-fixture-site.tar.gz','w:gz') as tar:
+              for p in source:tar.add(p,arcname=p)
+              b=b'FICTIONAL NON-SENSITIVE STORAGE'
+              info=tarfile.TarInfo('storage/fake.txt');info.size=len(b)
+              tar.addfile(info,io.BytesIO(b))
+          # Realistic GNU tar-style paths with harmless "." and "./" root
+          # entries. Synthetic file contents only; no user backups in CI.
+          with tarfile.open('/tmp/nonius-dotroot-website.tar.gz','w:gz') as tar:
+              for d in ('./','./lib/','./assets/'):
+                  item=tarfile.TarInfo(d)
+                  item.type=tarfile.DIRTYPE
+                  tar.addfile(item)
+              for p in source:
+                  tar.add(p,arcname='./'+p)
+          # The same root marker MUST NOT permit traversal through "../".
+          with tarfile.open('/tmp/nonius-dotroot-malicious.tar.gz','w:gz') as tar:
+              root=tarfile.TarInfo('./')
+              root.type=tarfile.DIRTYPE
+              tar.addfile(root)
+              for p in source:
+                  tar.add(p,arcname='./'+p)
+              payload=b'FICTIONAL TRAVERSAL TEST, NEVER EXTRACT'
+              bad=tarfile.TarInfo('./../fake-escape.txt')
+              bad.size=len(payload)
+              tar.addfile(bad,io.BytesIO(payload))
+          # A duplicate in an unrelated Hostinger domain is only an
+          # independently reviewed archive-completeness issue, not a reason
+          # to mistake the intended app for a different website.
+          with tarfile.open('/tmp/nonius-duplicate-unrelated.tar.gz','w:gz') as tar:
+              for domain in ('noniuswtax.depedtagb.online','other.example.com'):
+                  for p in source:
+                      tar.add(p,arcname='domains/'+domain+'/public_html/'+p)
+              tar.add('assets/app.js',arcname='domains/other.example.com/public_html/assets/app.js')
+          # A repeated PHP bootstrap IN the target domain MUST be rejected,
+          # even if both entries appear byte-for-byte identical.
+          with tarfile.open('/tmp/nonius-duplicate-selected.tar.gz','w:gz') as tar:
+              for p in source:
+                  tar.add(p,arcname='domains/noniuswtax.depedtagb.online/public_html/'+p)
+              tar.add('lib/bootstrap.php',arcname='domains/noniuswtax.depedtagb.online/public_html/lib/bootstrap.php')
+          # Alias collision between "./lib/bootstrap.php" and
+          # "lib/bootstrap.php" inside the selected application is unsafe.
+          with tarfile.open('/tmp/nonius-duplicate-alias.tar.gz','w:gz') as tar:
+              for p in source:
+                  tar.add(p,arcname='./'+p)
+              tar.add('lib/bootstrap.php',arcname='lib/bootstrap.php')
+          # Reproduce owner's privacy-safe observation exactly:
+          # three unscoped application copies, no domain-name path and 839
+          # nested fake archive files. Only ONE app's private local config
+          # explicitly identifies target database and target base_url.
+          def write_multiroot(path,matching_roots):
+              with tarfile.open(path,'w:gz') as tar:
+                  for root in ('apps/copy-1','apps/current','apps/copy-3'):
+                      for p in source:
+                          tar.add(p,arcname=root+'/'+p)
+                      ismatch=root in matching_roots
+                      domain='noniuswtax.depedtagb.online' if ismatch else 'not-this-site.example'
+                      database='u574137232_noniuswtax' if ismatch else 'fictional_other_database'
+                      cfg=("<?php\nreturn array (\n"
+                           "  'base_url' => 'https://"+domain+"',\n"
+                           "  'db' => array (\n"
+                           "    'host' => 'localhost',\n"
+                           "    'name' => '"+database+"',\n"
+                           "    'user' => 'fake_local_testing_only',\n"
+                           "    'password' => 'SYNTHETIC_NOT_REAL',\n"
+                           "  ),\n);\n").encode()
+                      meta=tarfile.TarInfo(root+'/config.local.php')
+                      meta.size=len(cfg)
+                      tar.addfile(meta,io.BytesIO(cfg))
+                  for i in range(839):
+                      name=f'archive-storage/unrelated-{i:04d}.zip'
+                      payload=b'FICTIONAL-ARCHIVE-METADATA'
+                      m=tarfile.TarInfo(name)
+                      m.size=len(payload)
+                      tar.addfile(m,io.BytesIO(payload))
+          write_multiroot('/tmp/nonius-3unscoped-839archives.tar.gz',{'apps/current'})
+          write_multiroot('/tmp/nonius-3unscoped-ambiguous.tar.gz',{'apps/current','apps/copy-1'})
+          write_multiroot('/tmp/nonius-3unscoped-unknown.tar.gz',set())
+          # Hostinger-like account archive with two independent app roots.
+          # The target-domain root must be chosen; filenames are fictional.
+          with tarfile.open('/tmp/nonius-hostinger-multisite.20261117211501.tar.gz','w:gz') as tar:
+              for domain in ('noniuswtax.depedtagb.online','other.example.com'):
+                  for p in source:
+                      tar.add(p,arcname='domains/'+domain+'/public_html/'+p)
+          with tarfile.open('/tmp/nonius-irrelevant-site.tar.gz','w:gz') as tar:
+              b=b'This is NOT the application'
+              info=tarfile.TarInfo('account-storage/other-content.txt')
+              info.size=len(b)
+              tar.addfile(info,io.BytesIO(b))
+          info={'report_type':'SCHEMA_ONLY_NO_PRODUCTION_RECORDS',
+                'schema':{'format':'NONIUS_SCHEMA_PREFLIGHT_V1',
+                          'tables':[{'name':n} for n in tables],
+                          'columns':[{'table':t,'name':c.split()[0]} for t in tables for c in cols[t]],
+                          'triggers':[{'name':f'fake_guard_{i:02d}'} for i in range(1,15)]}}
+          with open('schema-preflight-results/existing-schema-report.json','w') as f:json.dump(info,f)
+          print('PASS: CI fixture has only fictional records and exactly 21/177/14 structural objects.')
+          PY
+      - name: Compose config must have no host ports and be internal-only
+        shell: bash
+        run: |
+          NONIUS_PRIVATE_SQL_PATH=/tmp/nonius-fixture.sql NONIUS_PRIVATE_SQL_FORMAT=plain docker compose --profile manual -f compose.private-backup-restore.yml config --format json > /tmp/nonius-private-compose.json
+          node - <<'NODE'
+          const d=require('/tmp/nonius-private-compose.json');
+          if(!d.networks.privateonly.internal || d.services.web || d.services.db.ports?.length ||
+             !d.services.db.volumes.some(v=>v.target==='/private/recovery-privilege.sh' && v.read_only===true) ||
+             d.services.inspector.volumes.find(v=>v.target==='/private/input.backup')?.read_only!==true){
+              throw Error('Private database importer has unsafe container exposure');
+          }
+          console.log('PASS: internal-only network, read-only input bind, no public web or database ports');
+          NODE
+      - name: Reject forbidden SQL before starting local DB
+        shell: bash
+        run: |
+          cp /tmp/nonius-fixture.sql /tmp/nonius-unsafe.sql
+          printf '\nCREATE DATABASE malicious_not_allowed;\n' >> /tmp/nonius-unsafe.sql
+          set +e
+          pwsh -NoProfile -File ./scripts/Test-PrivateHistoricalBackupRestore.ps1 -FullSqlPath /tmp/nonius-unsafe.sql -WebsiteArchivePath /tmp/nonius-fixture-site.zip
+          exit_code=$?
+          set -e
+          test "$exit_code" -eq 1
+          node - <<'NODE'
+          const r=require('./readiness-results/private-backup-restore-summary.json');
+          if(r.test_status!=='RESTORE_TEST_FAILED'||r.mysql_data_restored_to_disposable_docker!==false ||
+             !r.errors.some(e=>e.includes('Unsupported SQL statement'))) {
+             throw Error('Importer did not refuse database-changing SQL before Docker startup');
+          }
+          console.log('PASS: rejected unsafe CREATE DATABASE export without importing records');
+          NODE
+      - name: Prove foreign DEFINER 1227 occurs without local privilege (fictional data)
+        shell: bash
+        run: |
+          set -euo pipefail
+          export NONIUS_PRIVATE_SQL_PATH=/tmp/nonius-fixture.sql.gz
+          export NONIUS_PRIVATE_SQL_FORMAT=gzip
+          project=nonius-ci-definer-negative
+          trap 'docker compose -p "$project" -f compose.private-backup-restore.yml down --volumes --remove-orphans >/dev/null 2>&1 || true' EXIT
+          docker compose -p "$project" -f compose.private-backup-restore.yml up -d --wait db
+          set +e
+          docker compose -p "$project" -f compose.private-backup-restore.yml run --rm --no-deps -T --entrypoint bash inspector \
+            -o pipefail -ec 'gzip -dc /private/input.backup | MYSQL_PWD="$DB_PASS" mariadb --host="$DB_HOST" --user="$DB_USER" "$DB_NAME"' \
+            > /tmp/nonius-ci-foreign-definer-denied.log 2>&1
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo 'FAIL: foreign explicit DEFINER succeeded with no SET USER privilege'
+            exit 1
+          fi
+          if ! grep -q 'ERROR 1227' /tmp/nonius-ci-foreign-definer-denied.log; then
+            echo 'FAIL: fictional unprivileged import failed for a reason other than expected 1227'
+            # This CI fixture is entirely artificial; no real database values.
+            cat /tmp/nonius-ci-foreign-definer-denied.log
+            exit 1
+          fi
+          echo 'PASS: initial limited user predictably fails with MariaDB 1227; controlled restore must use temporary SET USER grant.'
+      - name: Rehearse plain SQL and ZIP complete local-only recovery
+        shell: bash
+        run: |
+          set +e
+          pwsh -NoProfile -File ./scripts/Test-PrivateHistoricalBackupRestore.ps1 -FullSqlPath /tmp/nonius-fixture.sql -WebsiteArchivePath /tmp/nonius-fixture-site.zip
+          result=$?
+          set -e
+          if [ "$result" -ne 0 ]; then
+            # CI GENERATED FICTIONAL DATA ONLY; never run this diagnostic for live backups.
+            echo "CI synthetic import diagnostic (contains no real records):"
+            cat /tmp/nonius-private-restore-logs/sql-import-private.log || true
+            exit "$result"
+          fi
+          node - <<'NODE'
+          const r=require('./readiness-results/private-backup-restore-summary.json');
+          if(r.test_status!=='LOCAL_RESTORE_VERIFIED_R1_SIGNOFF_PENDING'||
+             r.isolated_temporary_set_user_privilege_granted!==true||
+             r.isolated_temporary_set_user_privilege_revoked!==true||
+             r.restored_trigger_runtime_definers_verified!==false||
+             r.private_source_backup_rewritten!==false||
+             r.restored_table_count!==21||r.restored_column_count!==177||
+             r.restored_trigger_count!==14||r.restored_migration037_row_count!==0||
+             r.restored_transaction_count!==1||r.total_fk_orphans!==0||
+             r.production_release!=='NO_GO_PENDING_R1_TO_R8'||
+             r.final_r1_review_signed!==false||
+             r.source_backup_point_in_time_consistency_independently_verified!==false){
+              throw Error('Local DB restore not complete or dangerously marked approved');
+          }
+          console.log('PASS: restored 14 triggers including a fictional foreign DEFINER, granted+revoked isolated SET USER, and preserved source backup.');
+          NODE
+      - name: Identify the right website from a full two-domain Hostinger archive
+        shell: bash
+        run: |
+          # Filename times are intentionally different; technical restore may
+          # succeed but point-in-time approval remains explicitly false.
+          cp /tmp/nonius-fixture.sql.gz /tmp/nonius-testdb.20261118211501.sql.gz
+          pwsh -NoProfile -File ./scripts/Test-PrivateHistoricalBackupRestore.ps1 -FullSqlPath /tmp/nonius-testdb.20261118211501.sql.gz -WebsiteArchivePath /tmp/nonius-hostinger-multisite.20261117211501.tar.gz
+          node - <<'NODE'
+          const r=require('./readiness-results/private-backup-restore-summary.json');
+          if(r.test_status!=='LOCAL_RESTORE_VERIFIED_R1_SIGNOFF_PENDING'||
+             r.code_archive_app_root_candidates!==2||
+             r.code_archive_expected_domain_candidates!==1||
+             r.code_archive_site_selection!=='EXPECTED_DOMAIN'||
+             r.code_archive_version!=='0.4.56'||
+             r.database_and_site_backup_timestamps_match!==false||
+             r.backup_pair_timestamp_status!=='DIFFERENT_TIMESTAMPS_REVIEW_REQUIRED'||
+             r.source_backup_point_in_time_consistency_independently_verified!==false ||
+             r.final_r1_review_signed!==false ||
+             r.restored_trigger_count!==14){
+              throw Error('Hostinger multi-site archive incorrectly selected or mismatched timestamps incorrectly approved');
+          }
+          console.log('PASS: safely selected only expected NONIUSWTAX root from two domains; 24-hour mismatch remains review-only');
+          NODE
+      - name: Refuse an unrelated full-account archive without an application
+        shell: bash
+        run: |
+          set +e
+          pwsh -NoProfile -File ./scripts/Test-PrivateHistoricalBackupRestore.ps1 -FullSqlPath /tmp/nonius-fixture.sql.gz -WebsiteArchivePath /tmp/nonius-irrelevant-site.tar.gz
+          status=$?
+          set -e
+          test "$status" -eq 1
+          node - <<'NODE'
+          const r=require('./readiness-results/private-backup-restore-summary.json');
+          if(r.mysql_data_restored_to_disposable_docker!==false ||
+             r.code_archive_site_selection!=='NO_APPLICATION_ROOT' ||
+             r.code_archive_app_root_candidates!==0 ||
+             r.test_status!=='RESTORE_TEST_FAILED'){
+             throw Error('No-application backup was not safely refused');
+          }
+          console.log('PASS: irrelevant archive rejected before any Docker import without exposing file paths');
+          NODE
+      - name: Accept harmless dot-root TAR directory entries and still restore offline
+        shell: bash
+        run: |
+          pwsh -NoProfile -File ./scripts/Test-PrivateHistoricalBackupRestore.ps1 -FullSqlPath /tmp/nonius-fixture.sql.gz -WebsiteArchivePath /tmp/nonius-dotroot-website.tar.gz
+          node - <<'NODE'
+          const r=require('./readiness-results/private-backup-restore-summary.json');
+          if(r.test_status!=='LOCAL_RESTORE_VERIFIED_R1_SIGNOFF_PENDING' ||
+             r.code_archive_safe_root_markers_ignored!==1 ||
+             r.code_archive_site_selection!=='SINGLE_UNSCOPED_APP' ||
+             r.restored_table_count!==21 || r.restored_trigger_count!==14 ||
+             r.source_backup_point_in_time_consistency_independently_verified!==false ||
+             r.final_r1_review_signed!==false){
+            throw Error('Harmless dot-root path was not accepted safely without signing off recovery');
+          }
+          console.log('PASS: TAR ./ root accepted, app found, fictional historical DB restored and disposed.');
+          NODE
+      - name: Reject real parent traversal even when harmless dot-root entry exists
+        shell: bash
+        run: |
+          set +e
+          pwsh -NoProfile -File ./scripts/Test-PrivateHistoricalBackupRestore.ps1 -FullSqlPath /tmp/nonius-fixture.sql.gz -WebsiteArchivePath /tmp/nonius-dotroot-malicious.tar.gz
+          code=$?
+          set -e
+          test "$code" -eq 1
+          node - <<'NODE'
+          const r=require('./readiness-results/private-backup-restore-summary.json');
+          if(r.test_status!=='RESTORE_TEST_FAILED' ||
+             r.mysql_data_restored_to_disposable_docker!==false ||
+             !r.errors.some(x=>/Unsafe website archive path|Could not read TAR.GZ site inventory/.test(x))){
+             throw Error('Parent traversal fixture not refused before Docker restore');
+          }
+          console.log('PASS: parent traversal path rejected before Docker import.');
+          NODE
+      - name: Allow repeated file paths solely outside expected application (report warning)
+        shell: bash
+        run: |
+          pwsh -NoProfile -File ./scripts/Test-PrivateHistoricalBackupRestore.ps1 -FullSqlPath /tmp/nonius-fixture.sql.gz -WebsiteArchivePath /tmp/nonius-duplicate-unrelated.tar.gz
+          node - <<'NODE'
+          const r=require('./readiness-results/private-backup-restore-summary.json');
+          if(r.test_status!=='LOCAL_RESTORE_VERIFIED_R1_SIGNOFF_PENDING' ||
+             r.restored_table_count!==21 || r.restored_trigger_count!==14 ||
+             r.code_archive_site_selection!=='EXPECTED_DOMAIN' ||
+             r.code_archive_duplicate_file_entries!==1 ||
+             r.code_archive_duplicate_selected_site_entries!==0 ||
+             r.code_archive_duplicate_unrelated_entries!==1 ||
+             r.code_archive_duplicate_scope!=='ONLY_OUTSIDE_SELECTED_SITE_REVIEW' ||
+             r.final_r1_review_signed!==false){
+              throw Error('Unrelated duplicate file should remain a reviewer warning, not a silent signoff');
+          }
+          console.log('PASS: selected app intact, unrelated TAR duplicate counted and still requires human backup review.');
+          NODE
+      - name: Refuse repeated target-app PHP file before any Docker restore
+        shell: bash
+        run: |
+          set +e
+          pwsh -NoProfile -File ./scripts/Test-PrivateHistoricalBackupRestore.ps1 -FullSqlPath /tmp/nonius-fixture.sql.gz -WebsiteArchivePath /tmp/nonius-duplicate-selected.tar.gz
+          code=$?
+          set -e
+          test "$code" -eq 1
+          node - <<'NODE'
+          const r=require('./readiness-results/private-backup-restore-summary.json');
+          if(r.test_status!=='RESTORE_TEST_FAILED' ||
+             r.mysql_data_restored_to_disposable_docker!==false ||
+             r.code_archive_site_selection!=='AMBIGUOUS_DUPLICATE_SITE_FILES' ||
+             r.code_archive_duplicate_file_entries!==1 ||
+             r.code_archive_duplicate_selected_site_entries!==1 ||
+             r.code_archive_duplicate_scope!=='SELECTED_SITE_AMBIGUOUS'){
+             throw Error('Repeated target PHP file must fail before restoring any real data');
+          }
+          console.log('PASS: selected-site duplicate blocked with aggregate-only reason.');
+          NODE
+      - name: Refuse normalization alias collisions inside selected app
+        shell: bash
+        run: |
+          set +e
+          pwsh -NoProfile -File ./scripts/Test-PrivateHistoricalBackupRestore.ps1 -FullSqlPath /tmp/nonius-fixture.sql.gz -WebsiteArchivePath /tmp/nonius-duplicate-alias.tar.gz
+          code=$?
+          set -e
+          test "$code" -eq 1
+          node - <<'NODE'
+          const r=require('./readiness-results/private-backup-restore-summary.json');
+          if(r.test_status!=='RESTORE_TEST_FAILED' ||
+             r.mysql_data_restored_to_disposable_docker!==false ||
+             r.code_archive_duplicate_alias_entries!==1 ||
+             r.code_archive_duplicate_selected_site_entries!==1){
+             throw Error('Alias collision in app was not rejected before SQL import');
+          }
+          console.log('PASS: ./ alias collision denied with no private archive paths printed.');
+          NODE
+      - name: Select one installed site from 3 unscoped copies and 839 nested archives
+        shell: bash
+        run: |
+          pwsh -NoProfile -File ./scripts/Test-PrivateHistoricalBackupRestore.ps1 -FullSqlPath /tmp/nonius-fixture.sql.gz -WebsiteArchivePath /tmp/nonius-3unscoped-839archives.tar.gz
+          node - <<'NODE'
+          const r=require('./readiness-results/private-backup-restore-summary.json');
+          if(r.test_status!=='LOCAL_RESTORE_VERIFIED_R1_SIGNOFF_PENDING' ||
+             r.code_archive_app_root_candidates!==3 ||
+             r.code_archive_expected_domain_candidates!==0 ||
+             r.code_archive_inner_archives_count!==839 ||
+             r.code_archive_nonius_signature_candidates!==3 ||
+             r.code_archive_target_db_candidates!==1 ||
+             r.code_archive_target_url_candidates!==1 ||
+             r.code_archive_verified_identity_candidates!==1 ||
+             r.code_archive_site_selection!=='MATCHED_INSTALLED_DB_AND_URL' ||
+             r.code_archive_identity_method!=='APP_SIGNATURE_DB_AND_BASE_URL' ||
+             r.restored_table_count!==21 || r.restored_trigger_count!==14 ||
+             r.final_r1_review_signed!==false){
+              throw Error('Three-app / 839-archive exact-shape recovery did not identify the sole installed site');
+          }
+          console.log('PASS: exact 3/0/839 structural fixture identifies only matching site, restores DB with no public files or approval.');
+          NODE
+      - name: Fail closed when multiple applications claim the same DB and URL
+        shell: bash
+        run: |
+          set +e
+          pwsh -NoProfile -File ./scripts/Test-PrivateHistoricalBackupRestore.ps1 -FullSqlPath /tmp/nonius-fixture.sql.gz -WebsiteArchivePath /tmp/nonius-3unscoped-ambiguous.tar.gz
+          code=$?
+          set -e
+          test "$code" -eq 1
+          node - <<'NODE'
+          const r=require('./readiness-results/private-backup-restore-summary.json');
+          if(r.test_status!=='RESTORE_TEST_FAILED' ||
+             r.mysql_data_restored_to_disposable_docker!==false ||
+             r.code_archive_site_selection!=='AMBIGUOUS_INSTALLED_IDENTITY' ||
+             r.code_archive_verified_identity_candidates!==2){
+              throw Error('Ambiguous installed site identity was not rejected before import');
+          }
+          console.log('PASS: two claiming the same private DB/URL are refused.');
+          NODE
+      - name: Fail closed when no application identifies target DB and URL
+        shell: bash
+        run: |
+          set +e
+          pwsh -NoProfile -File ./scripts/Test-PrivateHistoricalBackupRestore.ps1 -FullSqlPath /tmp/nonius-fixture.sql.gz -WebsiteArchivePath /tmp/nonius-3unscoped-unknown.tar.gz
+          code=$?
+          set -e
+          test "$code" -eq 1
+          node - <<'NODE'
+          const r=require('./readiness-results/private-backup-restore-summary.json');
+          if(r.test_status!=='RESTORE_TEST_FAILED' ||
+             r.mysql_data_restored_to_disposable_docker!==false ||
+             r.code_archive_site_selection!=='NO_VERIFIED_INSTALLED_IDENTITY' ||
+             r.code_archive_app_root_candidates!==3 ||
+             r.code_archive_verified_identity_candidates!==0){
+              throw Error('Unverified multi-site archive was not blocked');
+          }
+          console.log('PASS: unverified site remains blocked with aggregate-only diagnostics.');
+          NODE
+      - name: Rehearse Hostinger compressed SQL.gz and site tar.gz without extraction
+        shell: bash
+        run: |
+          pwsh -NoProfile -File ./scripts/Test-PrivateHistoricalBackupRestore.ps1 -FullSqlPath /tmp/nonius-fixture.sql.gz -WebsiteArchivePath /tmp/nonius-fixture-site.tar.gz
+          node - <<'NODE'
+          const r=require('./readiness-results/private-backup-restore-summary.json');
+          if(r.test_status!=='LOCAL_RESTORE_VERIFIED_R1_SIGNOFF_PENDING'||
+             r.code_archive_version!=='0.4.56'||r.restored_table_count!==21||
+             r.total_fk_orphans!==0||r.final_r1_review_signed!==false){
+              throw Error('Native Hostinger compressed backup restore failed');
+          }
+          console.log('PASS: native compressed backup restore and metadata-only report, never approved production');
+          NODE

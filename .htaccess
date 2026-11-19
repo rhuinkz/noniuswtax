@@ -40,3 +40,9 @@ RewriteRule ^compose\.existing-schema-compare\.yml$ - [F,L,NC]
 RewriteEngine On
 RewriteRule ^acceptance-results(?:/|$) - [F,L,NC]
 </IfModule>
+
+# Private production-readiness references and local assessments.
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteRule ^(?:private-release-evidence|readiness-results)(?:/|$) - [F,L,NC]
+</IfModule>
