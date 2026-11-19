@@ -4,6 +4,8 @@ on:
     paths:
       - 'compose.private-backup-restore.yml'
       - 'scripts/Test-PrivateHistoricalBackupRestore.ps1'
+      - 'scripts/PrivateNativeOutput.ps1'
+      - 'tests/release/windows-powershell-native-stderr.ps1'
       - 'tests/release/private-backup-restore-report.ddl'
       - 'tests/release/private-backup-foreign-keys.ddl'
       - '.github/workflows/private-backup-restore.yml'
@@ -13,6 +15,18 @@ permissions:
   contents: read
 
 jobs:
+  windows-powershell-51-native-stderr:
+    runs-on: windows-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check real Windows PowerShell 5.1 behavior with fictional native stderr
+        shell: powershell
+        run: |
+          if ($PSVersionTable.PSVersion.Major -ne 5) {
+            throw 'This regression must run in Windows PowerShell 5.1.'
+          }
+          & .\tests\release\windows-powershell-native-stderr.ps1
   isolated-private-restore-fixture:
     runs-on: ubuntu-latest
     timeout-minutes: 18
