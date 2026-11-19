@@ -110,6 +110,24 @@ Owner's correct SQL.gz passed preflight; the website root was uniquely identifie
 
 The file/DB backup time mismatch and unreviewed duplicate outside the app still need independent R1 approval even if the technical restore completes. **No actual production changes, migration 037, sanitization, or formal release authorization occur in this test.**
 
+### Actual SQL import reached; real importer returned nonzero (November 19, 2026)
+
+Owner executed the same historical private SQL.gz + full Hostinger TAR backup test twice. The **first** run still showed the old Windows PowerShell `NativeCommandError` from Docker's `Container ... Creating` progress. The **second** run, after the native stderr/exit handling fix, passed SQL preflight, found the exact candidate site, reported **one duplicate TAR entry outside the selected application**, started a healthy isolated MariaDB, and returned **`Private database import failed` from a genuine nonzero importer exit**. This is **not** a successful historical restoration; all isolated Docker containers, the dedicated volume, and network were removed. Hostinger was not changed.
+
+**Next step is strictly read-only local diagnosis, NOT another whole restore**. The private SQL import log already exists in the user's encrypted backup folder: `NONIUSWTAX_PRIVATE\nonius-private-restore-logs\sql-import-private.log`. It may contain actual transaction SQL statements, identifiers and secrets and **must not be uploaded, copied into Git or pasted into chat**.
+
+Use the new `scripts/Diagnose-PrivateImportLog.ps1` **once after Fetch/Pull** from repository root:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\Diagnose-PrivateImportLog.ps1
+```
+
+The script **only reads** the existing private log locally, optionally reads the aggregate existing R1 summary, classifies numerical MariaDB errors (e.g. 1064/1273/1227/1419) and coarse Docker/gzip/disk signals, and writes the Git-ignored `readiness-results/private-import-diagnostic.json`. It does **not** emit SQL lines, file paths, names, account values, statement snippets, TINs, or credentials; it never starts Docker or connects to Hostinger or the DB. If the private folder differs, pass `-LogPath "C:\path\outside\Git\sql-import-private.log"` without exposing that path in shared output.
+
+Only after reviewing the diagnostic JSON for confidentiality should the owner share its **error codes and coarse categories**. The actual cause is **not yet established** and must not be guessed from `Private database import failed` alone. Any compatibility fix must be applied and validated against an **isolated copy only**, never rewriting the only original backup, deleting source triggers, or changing live migration status. Then do a single targeted historical restore. R1 remains PENDING; R2–R8 and production GO remain NO-GO.
+
+**Synthetic diagnostic regressions** run in CI on both Windows PowerShell 5.1 and Linux PowerShell Core. They check numerical error classification and that a deliberately injected fictional TIN/SQL statement is never emitted to diagnostics. They also ensure Docker progress-only stderr is not falsely identified as an SQL failure.
+
 ## 4. The single report and interpretation
 
 The ignored local output is `readiness-results/private-backup-restore-summary.json` (no row contents, names, TINs, emails, passwords, account info or SQL statements).
