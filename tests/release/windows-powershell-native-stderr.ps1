@@ -7,10 +7,13 @@ $privateDir=Join-Path $env:RUNNER_TEMP 'nonius-ci-fake-native-stderr'
 New-Item -ItemType Directory -Path $privateDir -Force | Out-Null
 
 $okLog=Join-Path $privateDir 'fake-import.log'
-$okCmd=@('-NoProfile','-Command',
-  "[Console]::Error.WriteLine('Container fictional-inspector Creating'); [Console]::Out.WriteLine('FICTIONAL_IMPORT_DONE'); exit 0")
-$ok=Invoke-PrivateNativeLogged -Program 'powershell.exe' -Arguments $okCmd -PrivateLogPath $okLog
-if($ok.ExitCode -ne 0){throw 'Nonfatal native stderr incorrectly aborted the simulated import.'}
+$okCmd=@('/d','/c','echo Container fictional-inspector Creating 1>&2 & echo FICTIONAL_IMPORT_DONE & exit /b 0')
+$ok=Invoke-PrivateNativeLogged -Program 'cmd.exe' -Arguments $okCmd -PrivateLogPath $okLog
+if($ok.ExitCode -ne 0){
+    Write-Host ('Synthetic native test returned code '+$ok.ExitCode)
+    Write-Host (Get-Content -LiteralPath $okLog -Raw)
+    throw 'Nonfatal native stderr incorrectly aborted the simulated import.'
+}
 if($ok.Stdout.Count -ne 0){throw 'Private import emitted captured output instead of keeping it in private log.'}
 $okText=Get-Content -LiteralPath $okLog -Raw
 if($okText -notmatch 'Container fictional-inspector Creating' -or
@@ -20,9 +23,8 @@ if($okText -notmatch 'Container fictional-inspector Creating' -or
 Write-Host 'PASS: Windows PowerShell 5.1 did not treat ordinary Docker-like stderr as an import failure.'
 
 $metadataLog=Join-Path $privateDir 'fake-metadata.log'
-$metadataCmd=@('-NoProfile','-Command',
-  "[Console]::Error.WriteLine('Container fake Creating'); [Console]::Out.WriteLine('FICTIONAL_AGGREGATES_ONLY'); exit 0")
-$metadata=Invoke-PrivateNativeLogged -Program 'powershell.exe' -Arguments $metadataCmd -PrivateLogPath $metadataLog -CaptureStdout
+$metadataCmd=@('/d','/c','echo Container fake Creating 1>&2 & echo FICTIONAL_AGGREGATES_ONLY & exit /b 0')
+$metadata=Invoke-PrivateNativeLogged -Program 'cmd.exe' -Arguments $metadataCmd -PrivateLogPath $metadataLog -CaptureStdout
 if($metadata.ExitCode -ne 0 -or $metadata.Stdout.Count -ne 1 -or
    $metadata.Stdout[0] -cne 'FICTIONAL_AGGREGATES_ONLY'){
     throw 'Expected only aggregate stdout from metadata query.'
@@ -35,9 +37,8 @@ if($metaText -notmatch 'Container fake Creating' -or
 Write-Host 'PASS: metadata stdout only contains fictional aggregates; stderr stays in private file.'
 
 $failLog=Join-Path $privateDir 'fake-failure.log'
-$failCmd=@('-NoProfile','-Command',
-  "[Console]::Error.WriteLine('FICTIONAL_SQL_IMPORT_FAILURE'); exit 7")
-$failed=Invoke-PrivateNativeLogged -Program 'powershell.exe' -Arguments $failCmd -PrivateLogPath $failLog
+$failCmd=@('/d','/c','echo FICTIONAL_SQL_IMPORT_FAILURE 1>&2 & exit /b 7')
+$failed=Invoke-PrivateNativeLogged -Program 'cmd.exe' -Arguments $failCmd -PrivateLogPath $failLog
 if($failed.ExitCode -ne 7){throw 'Real nonzero native process exit code was not preserved.'}
 if((Get-Content -LiteralPath $failLog -Raw) -notmatch 'FICTIONAL_SQL_IMPORT_FAILURE'){
     throw 'Fictional SQL error did not remain in private log.'
