@@ -238,6 +238,26 @@ function InspectSiteArchive([string]$archivePath){
             }
             $configText=$null; $bootstrap=$null
         }
+        # A unique domain/sole-root bootstrap can itself be repeated in the
+        # TAR. Classify that ambiguity BEFORE reading candidate source,
+        # otherwise a safe read refusal would look like missing app signature.
+        $knownSingleRoot=$null
+        if($matched.Count -eq 1){$knownSingleRoot=$matched[0]}
+        elseif($matched.Count -eq 0 -and $roots.Count -eq 1){$knownSingleRoot=$roots[0]}
+        if($null -ne $knownSingleRoot){
+            $knownPrefix=$knownSingleRoot.Substring(0,$knownSingleRoot.Length-'lib/bootstrap.php'.Length)
+            $dupHere=@($duplicates | Where-Object {
+                $_.StartsWith($knownPrefix,[System.StringComparison]::OrdinalIgnoreCase)
+            }).Count
+            if($dupHere -gt 0){
+                $script:report.code_archive_duplicate_selected_site_entries=$dupHere
+                $script:report.code_archive_duplicate_unrelated_entries=$duplicates.Count-$dupHere
+                $script:report.code_archive_duplicate_scope='SELECTED_SITE_AMBIGUOUS'
+                $script:report.code_archive_site_selection='AMBIGUOUS_DUPLICATE_SITE_FILES'
+                throw ('Target app root has '+$dupHere+
+                  ' repeated file entries. Refusing unverified code source prior to any database import.')
+            }
+        }
         $selected=$null
         if($matched.Count -eq 1){
             $selected=$matched[0]
