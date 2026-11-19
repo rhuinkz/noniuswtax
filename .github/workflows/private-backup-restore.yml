@@ -59,6 +59,26 @@ jobs:
               b=b'FICTIONAL NON-SENSITIVE STORAGE'
               info=tarfile.TarInfo('storage/fake.txt');info.size=len(b)
               tar.addfile(info,io.BytesIO(b))
+          # Realistic GNU tar-style paths with harmless "." and "./" root
+          # entries. Synthetic file contents only; no user backups in CI.
+          with tarfile.open('/tmp/nonius-dotroot-website.tar.gz','w:gz') as tar:
+              for d in ('./','./lib/','./assets/'):
+                  item=tarfile.TarInfo(d)
+                  item.type=tarfile.DIRTYPE
+                  tar.addfile(item)
+              for p in source:
+                  tar.add(p,arcname='./'+p)
+          # The same root marker MUST NOT permit traversal through "../".
+          with tarfile.open('/tmp/nonius-dotroot-malicious.tar.gz','w:gz') as tar:
+              root=tarfile.TarInfo('./')
+              root.type=tarfile.DIRTYPE
+              tar.addfile(root)
+              for p in source:
+                  tar.add(p,arcname='./'+p)
+              payload=b'FICTIONAL TRAVERSAL TEST, NEVER EXTRACT'
+              bad=tarfile.TarInfo('./../fake-escape.txt')
+              bad.size=len(payload)
+              tar.addfile(bad,io.BytesIO(payload))
           # Hostinger-like account archive with two independent app roots.
           # The target-domain root must be chosen; filenames are fictional.
           with tarfile.open('/tmp/nonius-hostinger-multisite.20261117211501.tar.gz','w:gz') as tar:
@@ -174,6 +194,39 @@ jobs:
              throw Error('No-application backup was not safely refused');
           }
           console.log('PASS: irrelevant archive rejected before any Docker import without exposing file paths');
+          NODE
+      - name: Accept harmless dot-root TAR directory entries and still restore offline
+        shell: bash
+        run: |
+          pwsh -NoProfile -File ./scripts/Test-PrivateHistoricalBackupRestore.ps1 -FullSqlPath /tmp/nonius-fixture.sql.gz -WebsiteArchivePath /tmp/nonius-dotroot-website.tar.gz
+          node - <<'NODE'
+          const r=require('./readiness-results/private-backup-restore-summary.json');
+          if(r.test_status!=='LOCAL_RESTORE_VERIFIED_R1_SIGNOFF_PENDING' ||
+             r.code_archive_safe_root_markers_ignored!==1 ||
+             r.code_archive_site_selection!=='SINGLE_UNSCOPED_APP' ||
+             r.restored_table_count!==21 || r.restored_trigger_count!==14 ||
+             r.source_backup_point_in_time_consistency_independently_verified!==false ||
+             r.final_r1_review_signed!==false){
+            throw Error('Harmless dot-root path was not accepted safely without signing off recovery');
+          }
+          console.log('PASS: TAR ./ root accepted, app found, fictional historical DB restored and disposed.');
+          NODE
+      - name: Reject real parent traversal even when harmless dot-root entry exists
+        shell: bash
+        run: |
+          set +e
+          pwsh -NoProfile -File ./scripts/Test-PrivateHistoricalBackupRestore.ps1 -FullSqlPath /tmp/nonius-fixture.sql.gz -WebsiteArchivePath /tmp/nonius-dotroot-malicious.tar.gz
+          code=$?
+          set -e
+          test "$code" -eq 1
+          node - <<'NODE'
+          const r=require('./readiness-results/private-backup-restore-summary.json');
+          if(r.test_status!=='RESTORE_TEST_FAILED' ||
+             r.mysql_data_restored_to_disposable_docker!==false ||
+             !r.errors.some(x=>/Unsafe website archive path|Could not read TAR.GZ site inventory/.test(x))){
+             throw Error('Parent traversal fixture not refused before Docker restore');
+          }
+          console.log('PASS: parent traversal path rejected before Docker import.');
           NODE
       - name: Rehearse Hostinger compressed SQL.gz and site tar.gz without extraction
         shell: bash
