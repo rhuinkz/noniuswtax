@@ -53,6 +53,14 @@ The backup filenames are dated **November 18, 2026, 21:15:01** (database) and **
 
 **After Fetch/Pull**, rerun the **same one-command R1 procedure** with your existing local files; no database re-export is needed at this point. If it still reports `NO_APPLICATION_ROOT`, `MULTIPLE_UNSCOPED_APPS`, `AMBIGUOUS_EXPECTED_DOMAIN`, or `FOREIGN_OR_UNVERIFIED_DOMAIN`, stop and supply **only** the metadata summary. Do not share the TAR listing or raw archive.
 
+### TAR root-directory marker adjustment — November 19, 2026
+
+The owner reran the same private-backup command. The database SQL preflight again **passed**, but the website TAR was rejected with `Unsafe website archive path found` **before Docker started**. The prior inspector treated an empty path produced by normalizing a harmless TAR `./` root directory marker as unsafe. **This is a plausible explanation, not a confirmed analysis of the owner's private TAR file**; its individual entries were not uploaded or inspected.
+
+The revised preflight skips ONLY the harmless standalone TAR archive root markers `.`, `./` and repeated `./` equivalents, then continues enforcing absolute-path, parent traversal (`../`), ambiguous-dot-segment, duplicate-path and wrong-site checks on all other entries. No source file or private TAR entry list is published. It records an aggregate `code_archive_safe_root_markers_ignored` count in the local JSON report.
+
+The CI workflow separately tests (a) a fictional TAR with a standalone `./` root marker and a valid application, and (b) a similarly rooted TAR containing a malicious `../` file that must still be rejected **before any SQL import**. This is a test-tool correction only; R1 remains PENDING until the *real* private backup is restored and backup provenance independently approved.
+
 ## 4. The single report and interpretation
 
 The ignored local output is `readiness-results/private-backup-restore-summary.json` (no row contents, names, TINs, emails, passwords, account info or SQL statements).
