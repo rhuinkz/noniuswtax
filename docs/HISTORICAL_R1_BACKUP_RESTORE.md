@@ -128,6 +128,23 @@ Only after reviewing the diagnostic JSON for confidentiality should the owner sh
 
 **Synthetic diagnostic regressions** run in CI on both Windows PowerShell 5.1 and Linux PowerShell Core. They check numerical error classification and that a deliberately injected fictional TIN/SQL statement is never emitted to diagnostics. They also ensure Docker progress-only stderr is not falsely identified as an SQL failure.
 
+### SQL ERROR 1227 — isolated-only explicit DEFINER compatibility (19 November 2026)
+
+Owner uploaded the **aggregate-only** `private-import-diagnostic.json` from their existing private Windows restore attempt. It contains exactly **one MariaDB SQL error 1227**, classified `PRIVILEGE_OR_DEFINER_RESTRICTION`, with `DATABASE_PRIVILEGE_SIGNAL`, and original import exit code **1**; no unclassified SQL errors reported. This **does not identify the exact failed SQL statement** (which remains only in the user's private error log), and the upload contains no actual tax or supplier records. This suggests but does not prove a **foreign `DEFINER` privilege mismatch**.
+
+MariaDB 11.4 documentation states that creating triggers with explicit foreign `DEFINER` values requires `SET USER` and `CREATE TRIGGER` privilege. The original R1 Docker importer already has schema-level privileges, but **not** the global `SET USER` ability needed to preserve a backup's `DEFINER`. Source: [MariaDB CREATE TRIGGER](https://mariadb.com/docs/server/server-usage/triggers-events/triggers/create-trigger) and [MariaDB GRANT / SET USER](https://mariadb.com/docs/server/reference/sql-statements/account-management-sql-statements/grant).
+
+**Fix scope—disposable local Docker database ONLY:**
+- After creating the dedicated internal-network, no-port MariaDB instance, its **local-only root** grants **only `SET USER`** to the pre-existing dedicated **`nonius_private_import`** account, not `SUPER` or privileges on any real Hostinger account. There is no connection to production.
+- Import runs with the existing **non-root** dedicated importer and the **original private SQL mounted read-only**. No SQL or `DEFINER` text is edited or stripped; source backup bytes and SHA remain unchanged.
+- After successful import, the local root **revokes `SET USER` immediately**. Failure stops the test and the disposable volume is removed in cleanup. The report records `isolated_temporary_set_user_privilege_granted`, `isolated_temporary_set_user_privilege_revoked`, and `private_source_backup_rewritten=false`.
+- The cloned historical trigger `DEFINER` accounts may not exist on the isolated database. A successful structural restore **does not establish that the triggers can actually execute**: `restored_trigger_runtime_definers_verified=false` and R1/production approval remain pending. An authorized private historical-clone migration test must independently resolve/test runtime trigger identities later.
+- If SQL error 1227 persists, or another SQL error appears, the tool must **fail closed** and the operator should run only the private metadata-only log classifier. **No automatic SUPER grant, definer rewrite, change to actual backup, or live DDL.**
+
+**CI regression:** a complete **fictional** database fixture with all 21 tables, 177 columns, 14 triggers contains a trigger with an explicit **nonexistent foreign `DEFINER`**. The negative fixture must fail with error **1227** under the limited importer; after applying the temporary local-only `SET USER`, the same fictional backup must import, have all original trigger counts/FKs, revoke `SET USER`, and remove its isolated Docker volume. No real database or user record is in CI.
+
+**Next:** after all GitHub CI checks pass, Fetch/Pull `release/production-go-no-go-plan`, rerun the same owner-private R1 command *once*, and share **only the screened aggregate `readiness-results/private-backup-restore-summary.json`**. The original DB and website backup need not be exported again. The dated-backup mismatch and out-of-app duplicate archive entry remain independent R1 review issues. **Production NO-GO.**
+
 ## 4. The single report and interpretation
 
 The ignored local output is `readiness-results/private-backup-restore-summary.json` (no row contents, names, TINs, emails, passwords, account info or SQL statements).
