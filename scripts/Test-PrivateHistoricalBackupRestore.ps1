@@ -43,6 +43,11 @@ $report=[ordered]@{
     code_archive_duplicate_unrelated_entries=0
     code_archive_duplicate_scope='NOT_ASSESSED'
     code_archive_app_root_candidates=$null
+    code_archive_nonius_signature_candidates=0
+    code_archive_target_db_candidates=0
+    code_archive_target_url_candidates=0
+    code_archive_verified_identity_candidates=0
+    code_archive_identity_method='NONE'
     code_archive_expected_domain_candidates=$null
     code_archive_inner_archives_count=$null
     code_archive_site_selection='NOT_INSPECTED'
@@ -188,28 +193,89 @@ function InspectSiteArchive([string]$archivePath){
         $domainRegex='(?i)(^|/)'+[regex]::Escape($expectedDomain)+'/'
         $matched=@($roots | Where-Object {$_ -match $domainRegex})
         $script:report.code_archive_expected_domain_candidates=$matched.Count
+        # Inspect only public NONIUSWTAX bootstrap identity and two literal
+        # application config markers. In-memory only. Never evaluate PHP,
+        # show archive paths, echo config, or place secrets into the report.
+        # An unscoped multi-site archive is selected ONLY when the installed
+        # app signature, expected database and base URL all match uniquely.
+        function ReadPrivateSiteEntry([string]$normalizedPath){
+            if(!$lookup.ContainsKey($normalizedPath)){return $null}
+            if(@($duplicates | Where-Object {$_ -ceq $normalizedPath}).Count -gt 0){return $null}
+            $content=$null
+            if($isZip){
+                $one=@($entries | Where-Object {$_.FullName -ceq $lookup[$normalizedPath]})
+                if($one.Count -ne 1 -or $one[0].Length -gt 1048576){return $null}
+                $reader=[System.IO.StreamReader]::new($one[0].Open())
+                try{$content=$reader.ReadToEnd()}finally{$reader.Dispose()}
+            }else{
+                $content=((& $tar.Source -xOzf $archivePath $lookup[$normalizedPath] 2>$null) -join [Environment]::NewLine)
+                if($LASTEXITCODE -ne 0){return $null}
+            }
+            if($null -eq $content -or $content.Length -gt 1048576){return $null}
+            return $content
+        }
+        $signedRoots=New-Object 'System.Collections.Generic.List[string]'
+        $identityMatches=New-Object 'System.Collections.Generic.List[string]'
+        foreach($candidateRoot in $roots){
+            $candidatePrefix=$candidateRoot.Substring(0,$candidateRoot.Length-'lib/bootstrap.php'.Length)
+            $bootstrap=ReadPrivateSiteEntry $candidateRoot
+            if($null -eq $bootstrap){continue}
+            $hasCodeSignature=($bootstrap -cmatch "const\s+APP_NAME\s*=\s*'Non-IUS Withholding Tax Monitoring'\s*;") -and
+                              ($bootstrap -match "const\s+APP_VERSION\s*=\s*'[0-9]+\.[0-9]+\.[0-9]+'")
+            if(!$hasCodeSignature){continue}
+            $script:report.code_archive_nonius_signature_candidates++
+            $signedRoots.Add($candidateRoot) | Out-Null
+            $configText=ReadPrivateSiteEntry ($candidatePrefix+'config.local.php')
+            if($null -eq $configText){continue}
+            $hasArrayDb=($configText -match "(?i)'db'\s*=>\s*array\s*\(")
+            $targetDb=$hasArrayDb -and ($configText -match "(?i)'name'\s*=>\s*'u574137232_noniuswtax'")
+            $targetUrl=($configText -match "(?i)'base_url'\s*=>\s*'https?://noniuswtax\.depedtagb\.online(?:/|')")
+            if($targetDb){$script:report.code_archive_target_db_candidates++}
+            if($targetUrl){$script:report.code_archive_target_url_candidates++}
+            if($targetDb -and $targetUrl){
+                $script:report.code_archive_verified_identity_candidates++
+                $identityMatches.Add($candidateRoot) | Out-Null
+            }
+            $configText=$null; $bootstrap=$null
+        }
         $selected=$null
         if($matched.Count -eq 1){
             $selected=$matched[0]
+            if(!$signedRoots.Contains($selected)){
+                $script:report.code_archive_site_selection='DOMAIN_WITHOUT_APP_SIGNATURE'
+                throw 'Expected website domain path does not contain the NONIUSWTAX application signature.'
+            }
             $script:report.code_archive_site_selection='EXPECTED_DOMAIN'
+            $script:report.code_archive_identity_method='DOMAIN_PATH_PLUS_APP_SIGNATURE'
         }elseif($matched.Count -gt 1){
             $script:report.code_archive_site_selection='AMBIGUOUS_EXPECTED_DOMAIN'
-            throw 'Multiple application copies under the expected NONIUSWTAX domain. Provide a site-specific backup.'
+            throw 'Multiple application copies under expected domain. Provide a site-specific website backup.'
         }elseif($roots.Count -eq 1){
             $selected=$roots[0]
-            # Do not misclassify another domain's application as this site.
+            if(!$signedRoots.Contains($selected)){
+                $script:report.code_archive_site_selection='UNSCOPED_WITHOUT_APP_SIGNATURE'
+                throw 'Only archive application root does not contain the NONIUSWTAX application signature.'
+            }
             if($selected -match '(?i)(^|/)(?:domains|sites)/[^/]+/' -or
                $selected -match '(?i)(^|/)[a-z0-9-]+(?:\.[a-z0-9-]+)+/'){
                 $script:report.code_archive_site_selection='FOREIGN_OR_UNVERIFIED_DOMAIN'
-                throw 'Only one app was found, but its path is assigned to another or unverified domain.'
+                throw 'Single app is scoped to another domain; cannot accept it as NONIUSWTAX.'
             }
             $script:report.code_archive_site_selection='SINGLE_UNSCOPED_APP'
+            $script:report.code_archive_identity_method='SINGLE_ROOT_PLUS_APP_SIGNATURE'
+        }elseif($identityMatches.Count -eq 1){
+            $selected=$identityMatches[0]
+            $script:report.code_archive_site_selection='MATCHED_INSTALLED_DB_AND_URL'
+            $script:report.code_archive_identity_method='APP_SIGNATURE_DB_AND_BASE_URL'
         }else{
-            $script:report.code_archive_site_selection=if($roots.Count -eq 0){'NO_APPLICATION_ROOT'}else{'MULTIPLE_UNSCOPED_APPS'}
-            throw ('No uniquely identifiable NONIUSWTAX site: '+$roots.Count+
-              ' app root(s), '+$matched.Count+' expected-domain match(es), '+
-              $script:report.code_archive_inner_archives_count+
-              ' nested archive(s). Select a backup containing the site files, not only nested site packages.')
+            $script:report.code_archive_site_selection=if($roots.Count -eq 0){'NO_APPLICATION_ROOT'}elseif($identityMatches.Count -gt 1){'AMBIGUOUS_INSTALLED_IDENTITY'}else{'NO_VERIFIED_INSTALLED_IDENTITY'}
+            throw ('Cannot uniquely identify installed NONIUSWTAX website. '+
+                $roots.Count+' app roots, '+
+                $script:report.code_archive_nonius_signature_candidates+' NONIUSWTAX code signatures, '+
+                $script:report.code_archive_target_db_candidates+' expected DB bindings, '+
+                $script:report.code_archive_target_url_candidates+' expected site URL bindings, '+
+                $script:report.code_archive_verified_identity_candidates+' full matches. '+
+                'No files were extracted. Obtain an unambiguous site-specific website backup if none matches.')
         }
         # Duplicate paths outside the selected site may be unrelated
         # Hostinger account content and are never unpacked or executed.
