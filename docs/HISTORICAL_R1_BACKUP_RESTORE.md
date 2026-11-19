@@ -96,6 +96,20 @@ If there are zero verified identities, the archive may be an unrelated account b
 
 The owner can Fetch/Pull `release/production-go-no-go-plan` and rerun the same private one-command verification. If it reports `NO_VERIFIED_INSTALLED_IDENTITY`, `AMBIGUOUS_INSTALLED_IDENTITY` or `AMBIGUOUS_DUPLICATE_SITE_FILES`, stop and supply only the aggregate report. Do not send site archive file lists, configuration, SQL contents, or credentials. R1 approval, independently verified backup time consistency and all production approval gates remain **PENDING**.
 
+### Windows PowerShell 5.1 Docker progress handling — 19 November 2026
+
+Owner's correct SQL.gz passed preflight; the website root was uniquely identified and there was **one duplicate file entry outside the selected app**, flagged for independent archive-provenance review. The temporary MariaDB started and became healthy, but the initial import ended with console text `FAIL: Container nonius-private-recovery-inspector-run-... Creating`. Docker created its importer container and the script cleaned up all isolated containers, the network, and temporary volume.
+
+**Diagnosis:** the original importer invoked `& docker @command *> $privateLog` under `$ErrorActionPreference='Stop'`. Native Docker Compose's ordinary stderr progress line can become a terminating `NativeCommandError` on the owner's **Windows PowerShell 5.1**, before an actual SQL import exit code is checked. This error **does not establish whether SQL succeeded or failed**. Do not mark R1 PASS from that console output.
+
+**Fix:** `scripts/PrivateNativeOutput.ps1` now runs native Docker processes with a scoped nonterminating stderr policy, redirects import stdout/stderr **only to the owner's existing private folder outside the repository**, captures the **actual process exit code without a PowerShell pipeline**, and separately logs metadata-query/FK-query stderr while collecting only aggregate stdout. New privacy-safe JSON fields `sql_import_docker_exit_code`, `sql_metadata_docker_exit_code`, and `sql_fk_docker_exit_code` help identify the failing stage without revealing SQL statements or row values.
+
+**Proof:** A dedicated **Windows PowerShell 5.1** CI job invokes the exact helper on a fictional native process emitting `Container ... Creating` on stderr and returning exit `0`, verifies aggregate stdout isolation, and separately simulates a genuine SQL error returning exit **7**. These checks ensure normal progress cannot bypass a real SQL failure. The existing Docker restore suite additionally uses fictional 21/177/14 databases and Hostinger-like archives.
+
+**Next:** after CI is green, Fetch/Pull `release/production-go-no-go-plan`, then rerun the **same one local private restore command** against the original backups. No SQL/TAR re-download needed. If it still fails, share only the **reviewed** aggregate JSON. Do not display or upload `nonius-private-restore-logs/sql-import-private.log`, `sql-metadata-private.log`, or `sql-foreign-keys-private.log`—SQL import diagnostics can contain confidential literals. Genuine nonzero SQL import errors must be investigated locally, separately from Docker progress.
+
+The file/DB backup time mismatch and unreviewed duplicate outside the app still need independent R1 approval even if the technical restore completes. **No actual production changes, migration 037, sanitization, or formal release authorization occur in this test.**
+
 ## 4. The single report and interpretation
 
 The ignored local output is `readiness-results/private-backup-restore-summary.json` (no row contents, names, TINs, emails, passwords, account info or SQL statements).
