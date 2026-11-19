@@ -38,6 +38,21 @@ It first reads the actual site's **code archive manifest** (without extracting s
 
 If the archive contains multiple websites, a code version mismatch, unsupported permissions/SQL format or a zero/changed trigger baseline, the test fails rather than automatically altering data. A Hostinger compressed `.sql.gz` and `.tar.gz` are supported **without extracting their private contents into the Git working tree**.
 
+### Why the first correct-database attempt stopped (18–19 November 2026)
+
+The owner selected the correct database export `u574137232_noniuswtax.20261118211501.sql.gz` and the full website archive `u574137232.20261117211501.tar.gz`. The SQL format preflight **passed**, but the original site-archive parser failed before Docker startup because it could not identify **exactly one** `lib/bootstrap.php` within the website TAR. It did **not** prove the PHP file was missing; a Hostinger account-level TAR can contain multiple domain roots or nested subarchives.
+
+The improved archive inspector (this draft PR) now:
+- inventories **only the entry paths** locally, without printing or sharing them;
+- selects the expected `noniuswtax.depedtagb.online` domain's exact application root when uniquely present, even if other sites are in the same archive;
+- otherwise accepts a *single unscoped* application only if it is not explicitly assigned to another domain;
+- rejects multiple ambiguous roots, another site's archive, absent application roots, missing PHP files and unsafe paths, returning **aggregate counts and a reason code only** in `readiness-results/private-backup-restore-summary.json`;
+- records whether Hostinger backup filenames encode matching timestamps. Nonmatching times are a **review item**, not by themselves proof of incorrect data or an automatic failure of the isolated technical restoration.
+
+The backup filenames are dated **November 18, 2026, 21:15:01** (database) and **November 17, 2026, 21:15:01** (website). The owner reports **no transactions and no code changes** during those 24 hours. This supports provisional use of the pair for a private local restore rehearsal, **but does not establish** that settings, membership, audit events, status, migration history, scheduled tasks, or configuration were unchanged. An independent reviewer must document a read-only cross-time comparison and backup provenance before signing R1. The tool leaves `source_backup_point_in_time_consistency_independently_verified=false` regardless of the filename dates.
+
+**After Fetch/Pull**, rerun the **same one-command R1 procedure** with your existing local files; no database re-export is needed at this point. If it still reports `NO_APPLICATION_ROOT`, `MULTIPLE_UNSCOPED_APPS`, `AMBIGUOUS_EXPECTED_DOMAIN`, or `FOREIGN_OR_UNVERIFIED_DOMAIN`, stop and supply **only** the metadata summary. Do not share the TAR listing or raw archive.
+
 ## 4. The single report and interpretation
 
 The ignored local output is `readiness-results/private-backup-restore-summary.json` (no row contents, names, TINs, emails, passwords, account info or SQL statements).
