@@ -99,6 +99,38 @@ jobs:
               for p in source:
                   tar.add(p,arcname='./'+p)
               tar.add('lib/bootstrap.php',arcname='lib/bootstrap.php')
+          # Reproduce owner's privacy-safe observation exactly:
+          # three unscoped application copies, no domain-name path and 839
+          # nested fake archive files. Only ONE app's private local config
+          # explicitly identifies target database and target base_url.
+          def write_multiroot(path,matching_roots):
+              with tarfile.open(path,'w:gz') as tar:
+                  for root in ('apps/copy-1','apps/current','apps/copy-3'):
+                      for p in source:
+                          tar.add(p,arcname=root+'/'+p)
+                      ismatch=root in matching_roots
+                      domain='noniuswtax.depedtagb.online' if ismatch else 'not-this-site.example'
+                      database='u574137232_noniuswtax' if ismatch else 'fictional_other_database'
+                      cfg=("<?php\nreturn array (\n"
+                           "  'base_url' => 'https://"+domain+"',\n"
+                           "  'db' => array (\n"
+                           "    'host' => 'localhost',\n"
+                           "    'name' => '"+database+"',\n"
+                           "    'user' => 'fake_local_testing_only',\n"
+                           "    'password' => 'SYNTHETIC_NOT_REAL',\n"
+                           "  ),\n);\n").encode()
+                      meta=tarfile.TarInfo(root+'/config.local.php')
+                      meta.size=len(cfg)
+                      tar.addfile(meta,io.BytesIO(cfg))
+                  for i in range(839):
+                      name=f'archive-storage/unrelated-{i:04d}.zip'
+                      payload=b'FICTIONAL-ARCHIVE-METADATA'
+                      m=tarfile.TarInfo(name)
+                      m.size=len(payload)
+                      tar.addfile(m,io.BytesIO(payload))
+          write_multiroot('/tmp/nonius-3unscoped-839archives.tar.gz',{'apps/current'})
+          write_multiroot('/tmp/nonius-3unscoped-ambiguous.tar.gz',{'apps/current','apps/copy-1'})
+          write_multiroot('/tmp/nonius-3unscoped-unknown.tar.gz',set())
           # Hostinger-like account archive with two independent app roots.
           # The target-domain root must be chosen; filenames are fictional.
           with tarfile.open('/tmp/nonius-hostinger-multisite.20261117211501.tar.gz','w:gz') as tar:
@@ -303,6 +335,65 @@ jobs:
              throw Error('Alias collision in app was not rejected before SQL import');
           }
           console.log('PASS: ./ alias collision denied with no private archive paths printed.');
+          NODE
+      - name: Select one installed site from 3 unscoped copies and 839 nested archives
+        shell: bash
+        run: |
+          pwsh -NoProfile -File ./scripts/Test-PrivateHistoricalBackupRestore.ps1 -FullSqlPath /tmp/nonius-fixture.sql.gz -WebsiteArchivePath /tmp/nonius-3unscoped-839archives.tar.gz
+          node - <<'NODE'
+          const r=require('./readiness-results/private-backup-restore-summary.json');
+          if(r.test_status!=='LOCAL_RESTORE_VERIFIED_R1_SIGNOFF_PENDING' ||
+             r.code_archive_app_root_candidates!==3 ||
+             r.code_archive_expected_domain_candidates!==0 ||
+             r.code_archive_inner_archives_count!==839 ||
+             r.code_archive_nonius_signature_candidates!==3 ||
+             r.code_archive_target_db_candidates!==1 ||
+             r.code_archive_target_url_candidates!==1 ||
+             r.code_archive_verified_identity_candidates!==1 ||
+             r.code_archive_site_selection!=='MATCHED_INSTALLED_DB_AND_URL' ||
+             r.code_archive_identity_method!=='APP_SIGNATURE_DB_AND_BASE_URL' ||
+             r.restored_table_count!==21 || r.restored_trigger_count!==14 ||
+             r.final_r1_review_signed!==false){
+              throw Error('Three-app / 839-archive exact-shape recovery did not identify the sole installed site');
+          }
+          console.log('PASS: exact 3/0/839 structural fixture identifies only matching site, restores DB with no public files or approval.');
+          NODE
+      - name: Fail closed when multiple applications claim the same DB and URL
+        shell: bash
+        run: |
+          set +e
+          pwsh -NoProfile -File ./scripts/Test-PrivateHistoricalBackupRestore.ps1 -FullSqlPath /tmp/nonius-fixture.sql.gz -WebsiteArchivePath /tmp/nonius-3unscoped-ambiguous.tar.gz
+          code=$?
+          set -e
+          test "$code" -eq 1
+          node - <<'NODE'
+          const r=require('./readiness-results/private-backup-restore-summary.json');
+          if(r.test_status!=='RESTORE_TEST_FAILED' ||
+             r.mysql_data_restored_to_disposable_docker!==false ||
+             r.code_archive_site_selection!=='AMBIGUOUS_INSTALLED_IDENTITY' ||
+             r.code_archive_verified_identity_candidates!==2){
+              throw Error('Ambiguous installed site identity was not rejected before import');
+          }
+          console.log('PASS: two claiming the same private DB/URL are refused.');
+          NODE
+      - name: Fail closed when no application identifies target DB and URL
+        shell: bash
+        run: |
+          set +e
+          pwsh -NoProfile -File ./scripts/Test-PrivateHistoricalBackupRestore.ps1 -FullSqlPath /tmp/nonius-fixture.sql.gz -WebsiteArchivePath /tmp/nonius-3unscoped-unknown.tar.gz
+          code=$?
+          set -e
+          test "$code" -eq 1
+          node - <<'NODE'
+          const r=require('./readiness-results/private-backup-restore-summary.json');
+          if(r.test_status!=='RESTORE_TEST_FAILED' ||
+             r.mysql_data_restored_to_disposable_docker!==false ||
+             r.code_archive_site_selection!=='NO_VERIFIED_INSTALLED_IDENTITY' ||
+             r.code_archive_app_root_candidates!==3 ||
+             r.code_archive_verified_identity_candidates!==0){
+              throw Error('Unverified multi-site archive was not blocked');
+          }
+          console.log('PASS: unverified site remains blocked with aggregate-only diagnostics.');
           NODE
       - name: Rehearse Hostinger compressed SQL.gz and site tar.gz without extraction
         shell: bash
