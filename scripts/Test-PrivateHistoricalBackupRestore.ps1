@@ -12,6 +12,7 @@ $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 $root=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 Set-Location $root
+. (Join-Path $PSScriptRoot 'PrivateNativeOutput.ps1')
 $utf8=New-Object System.Text.UTF8Encoding($false)
 $outputFolder=Join-Path $root 'readiness-results'
 $output=Join-Path $outputFolder 'private-backup-restore-summary.json'
@@ -57,6 +58,9 @@ $report=[ordered]@{
     code_archive_version=$null
     code_archive_has_private_config=$false
     code_archive_has_storage=$false
+    sql_import_docker_exit_code=$null
+    sql_metadata_docker_exit_code=$null
+    sql_fk_docker_exit_code=$null
     restored_table_count=$null
     restored_column_count=$null
     restored_trigger_count=$null
@@ -414,16 +418,20 @@ try{
        '-o','pipefail','-ec',$importCommand)
     # Import errors may contain database literals. They go into a PRIVATE
     # local file OUTSIDE Git and are never printed or published by this script.
-    & docker @command *> $privateLog
-    if($LASTEXITCODE -ne 0){
+    $importResult=Invoke-PrivateNativeLogged -Program 'docker' -Arguments $command -PrivateLogPath $privateLog
+    $report.sql_import_docker_exit_code=$importResult.ExitCode
+    if($importResult.ExitCode -ne 0){
         throw 'Private database import failed. Inspect private SQL log on your computer only. Do not upload it.'
     }
     $report.mysql_data_restored_to_disposable_docker=$true
     Write-Host 'Verifying restored tables, triggers, migration 037 and row totals (aggregates only)...'
     $queryArgs=$compose+@('run','--rm','--no-deps','-T','--entrypoint','sh',
       'inspector','-ec',($cli+' < /private/report.sql'))
-    $queryOutput=@(& docker @queryArgs)
-    if($LASTEXITCODE -ne 0){throw 'Database structural inspection failed; no sensitive rows will be logged.'}
+    $metadataLog=Join-Path $privateFolder 'sql-metadata-private.log'
+    $metadataResult=Invoke-PrivateNativeLogged -Program 'docker' -Arguments $queryArgs -PrivateLogPath $metadataLog -CaptureStdout
+    $report.sql_metadata_docker_exit_code=$metadataResult.ExitCode
+    if($metadataResult.ExitCode -ne 0){throw 'Database structural inspection failed; see private metadata log locally only.'}
+    $queryOutput=@($metadataResult.Stdout)
     $jsonLines=@($queryOutput | Where-Object {$_ -match '^\s*\{'})
     if($jsonLines.Count -ne 1){throw 'Unexpected private restore metadata response.'}
     $restored=$jsonLines[0] | ConvertFrom-Json
@@ -433,8 +441,11 @@ try{
     if([int]$restored.composite_foreign_keys -ne 0){throw 'Composite foreign keys need an independently approved checker.'}
     $fkArgs=$compose+@('run','--rm','--no-deps','-T','--entrypoint','sh',
        'inspector','-ec',($cli+' < /private/foreign-keys.sql'))
-    $fkOutput=@(& docker @fkArgs)
-    if($LASTEXITCODE -ne 0){throw 'Foreign-key consistency inspection failed.'}
+    $fkLog=Join-Path $privateFolder 'sql-foreign-keys-private.log'
+    $fkResult=Invoke-PrivateNativeLogged -Program 'docker' -Arguments $fkArgs -PrivateLogPath $fkLog -CaptureStdout
+    $report.sql_fk_docker_exit_code=$fkResult.ExitCode
+    if($fkResult.ExitCode -ne 0){throw 'Foreign-key consistency inspection failed; see private FK log locally only.'}
+    $fkOutput=@($fkResult.Stdout)
     $numbers=@($fkOutput | Where-Object {$_ -match '^\s*\d+\s*$'})
     if($numbers.Count -ne 1){throw 'Unexpected foreign-key checker response.'}
     $orphans=[long]$numbers[0].Trim()
