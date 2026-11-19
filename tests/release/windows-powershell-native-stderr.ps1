@@ -26,7 +26,8 @@ $metadataLog=Join-Path $privateDir 'fake-metadata.log'
 $metadataCmd=@('/d','/c','echo Container fake Creating 1>&2 & echo FICTIONAL_AGGREGATES_ONLY & exit /b 0')
 $metadata=Invoke-PrivateNativeLogged -Program 'cmd.exe' -Arguments $metadataCmd -PrivateLogPath $metadataLog -CaptureStdout
 if($metadata.ExitCode -ne 0 -or $metadata.Stdout.Count -ne 1 -or
-   $metadata.Stdout[0] -cne 'FICTIONAL_AGGREGATES_ONLY'){
+   ([string]$metadata.Stdout[0]).Trim() -cne 'FICTIONAL_AGGREGATES_ONLY'){
+    Write-Host ('FICTIONAL CI metadata diagnostic: exit='+$metadata.ExitCode+'; rows='+$metadata.Stdout.Count)
     throw 'Expected only aggregate stdout from metadata query.'
 }
 $metaText=Get-Content -LiteralPath $metadataLog -Raw
