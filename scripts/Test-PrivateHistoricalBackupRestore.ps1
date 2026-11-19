@@ -36,6 +36,12 @@ $report=[ordered]@{
     code_backup_sha256=$null
     code_archive_file_count=$null
     code_archive_safe_root_markers_ignored=0
+    code_archive_duplicate_file_entries=0
+    code_archive_duplicate_exact_path_entries=0
+    code_archive_duplicate_alias_entries=0
+    code_archive_duplicate_selected_site_entries=0
+    code_archive_duplicate_unrelated_entries=0
+    code_archive_duplicate_scope='NOT_ASSESSED'
     code_archive_app_root_candidates=$null
     code_archive_expected_domain_candidates=$null
     code_archive_inner_archives_count=$null
@@ -130,6 +136,9 @@ function InspectSiteArchive([string]$archivePath){
         $lookup=@{}
         $seen=[System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
         $safeRootDirectoryMarkersIgnored=0
+        $duplicates=New-Object 'System.Collections.Generic.List[string]'
+        $duplicateExact=0
+        $duplicateAlias=0
         foreach($name in $names){
             $rawEntry=([string]$name).Replace('\','/')
             # tar often lists a harmless root directory marker "." or "./".
@@ -150,11 +159,25 @@ function InspectSiteArchive([string]$archivePath){
                 throw 'Unsafe website archive path found (ambiguous or invalid). No archive data extracted.'
             }
             if(!$normalized.EndsWith('/')){
-                if(!$seen.Add($normalized)){throw 'Duplicate normalized website archive path.'}
+                if(!$seen.Add($normalized)){
+                    # Do not silently choose the first or last TAR version.
+                    # Collect only aggregate counts; inspect the selected
+                    # NONIUSWTAX site scope below before allowing any import.
+                    $duplicates.Add($normalized) | Out-Null
+                    if($lookup[$normalized] -ceq [string]$name){
+                        $duplicateExact++
+                    }else{
+                        $duplicateAlias++
+                    }
+                    continue
+                }
                 $lookup[$normalized]=[string]$name
             }
         }
         $script:report.code_archive_safe_root_markers_ignored=$safeRootDirectoryMarkersIgnored
+        $script:report.code_archive_duplicate_file_entries=$duplicates.Count
+        $script:report.code_archive_duplicate_exact_path_entries=$duplicateExact
+        $script:report.code_archive_duplicate_alias_entries=$duplicateAlias
         $script:report.code_archive_file_count=$lookup.Count
         $script:report.code_archive_inner_archives_count=@($lookup.Keys | Where-Object {
             $_ -match '(?i)\.(zip|tar|tar\.gz|tgz)$'
@@ -188,7 +211,36 @@ function InspectSiteArchive([string]$archivePath){
               $script:report.code_archive_inner_archives_count+
               ' nested archive(s). Select a backup containing the site files, not only nested site packages.')
         }
+        # Duplicate paths outside the selected site may be unrelated
+        # Hostinger account content and are never unpacked or executed.
+        # Any duplicate INSIDE the selected site is ambiguous, including
+        # duplicate bootstrap, updater, migration or configuration files.
         $prefix=$selected.Substring(0,$selected.Length-'lib/bootstrap.php'.Length)
+        $dupsInSite=0
+        $dupsOutside=0
+        foreach($dup in $duplicates){
+            if($dup.StartsWith($prefix,[System.StringComparison]::OrdinalIgnoreCase)){
+                $dupsInSite++
+            }else{$dupsOutside++}
+        }
+        $script:report.code_archive_duplicate_selected_site_entries=$dupsInSite
+        $script:report.code_archive_duplicate_unrelated_entries=$dupsOutside
+        $script:report.code_archive_duplicate_scope=if($dupsInSite -gt 0){
+            'SELECTED_SITE_AMBIGUOUS'
+        }elseif($dupsOutside -gt 0){
+            'ONLY_OUTSIDE_SELECTED_SITE_REVIEW'
+        }else{'NONE'}
+        if($dupsInSite -gt 0){
+            $script:report.code_archive_site_selection='AMBIGUOUS_DUPLICATE_SITE_FILES'
+            throw ('Selected NONIUSWTAX application contains '+$dupsInSite+
+                ' repeated file path(s). Do NOT choose a TAR version automatically. '+
+                'Get a clean site-specific archive; no database restore was started.')
+        }
+        if($dupsOutside -gt 0){
+            Write-Host ('NOTICE: '+$dupsOutside+
+                ' duplicate TAR file entry(s) are outside the selected app. '+
+                'Their provenance still needs independent backup review.') -ForegroundColor Yellow
+        }
         foreach($required in @('update.php','lib/migrations.php','login.php')){
             if(!$lookup.ContainsKey($prefix+$required)){
                 $script:report.code_archive_site_selection='INCOMPLETE_SITE_ROOT'
