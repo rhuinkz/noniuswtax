@@ -210,6 +210,32 @@ jobs:
           }
           console.log('PASS: rejected unsafe CREATE DATABASE export without importing records');
           NODE
+      - name: Prove foreign DEFINER 1227 occurs without local privilege (fictional data)
+        shell: bash
+        run: |
+          set -euo pipefail
+          export NONIUS_PRIVATE_SQL_PATH=/tmp/nonius-fixture.sql.gz
+          export NONIUS_PRIVATE_SQL_FORMAT=gzip
+          project=nonius-ci-definer-negative
+          trap 'docker compose -p "$project" -f compose.private-backup-restore.yml down --volumes --remove-orphans >/dev/null 2>&1 || true' EXIT
+          docker compose -p "$project" -f compose.private-backup-restore.yml up -d --wait db
+          set +e
+          docker compose -p "$project" -f compose.private-backup-restore.yml run --rm --no-deps -T --entrypoint bash inspector \
+            -o pipefail -ec 'gzip -dc /private/input.backup | MYSQL_PWD="$DB_PASS" mariadb --host="$DB_HOST" --user="$DB_USER" "$DB_NAME"' \
+            > /tmp/nonius-ci-foreign-definer-denied.log 2>&1
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo 'FAIL: foreign explicit DEFINER succeeded with no SET USER privilege'
+            exit 1
+          fi
+          if ! grep -q 'ERROR 1227' /tmp/nonius-ci-foreign-definer-denied.log; then
+            echo 'FAIL: fictional unprivileged import failed for a reason other than expected 1227'
+            # This CI fixture is entirely artificial; no real database values.
+            cat /tmp/nonius-ci-foreign-definer-denied.log
+            exit 1
+          fi
+          echo 'PASS: initial limited user predictably fails with MariaDB 1227; controlled restore must use temporary SET USER grant.'
       - name: Rehearse plain SQL and ZIP complete local-only recovery
         shell: bash
         run: |
