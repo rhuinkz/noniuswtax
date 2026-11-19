@@ -420,10 +420,9 @@ try{
     # DEFINER in restored triggers. Grant only to the dedicated importer
     # and only inside this disposable isolated DB. Not production SQL.
     # Source SQL is preserved byte for byte; no DEFINER rewriting.
-    $rootCli='MYSQL_PWD="$MARIADB_ROOT_PASSWORD" exec mariadb --user=root --execute "$1"'
-    $grantSql="GRANT SET USER ON *.* TO 'nonius_private_import'@'%'"
-    $revokeSql="REVOKE SET USER ON *.* FROM 'nonius_private_import'@'%'"
-    $grantCmd=$compose+@('exec','-T','db','sh','-ec',$rootCli,'local-recovery-grant',$grantSql)
+    # No inline SQL/shell quoting is passed through Windows PowerShell 5.1:
+    # MariaDB reads the LF-only, read-only script INSIDE the disposable DB.
+    $grantCmd=$compose+@('exec','-T','db','sh','/private/recovery-privilege.sh','grant')
     Write-Host 'Applying temporary local-only DEFINER restoration privilege to disposable DB importer...'
     DoDocker $grantCmd
     $report.isolated_temporary_set_user_privilege_granted=$true
@@ -442,7 +441,7 @@ try{
     $report.mysql_data_restored_to_disposable_docker=$true
     # Revoke added capability as soon as the original SQL stream finishes.
     # The subsequent read-only consistency checks need no global privilege.
-    $revokeCmd=$compose+@('exec','-T','db','sh','-ec',$rootCli,'local-recovery-revoke',$revokeSql)
+    $revokeCmd=$compose+@('exec','-T','db','sh','/private/recovery-privilege.sh','revoke')
     DoDocker $revokeCmd
     $report.isolated_temporary_set_user_privilege_revoked=$true
     Write-Host 'Verifying restored tables, triggers, migration 037 and row totals (aggregates only)...'
