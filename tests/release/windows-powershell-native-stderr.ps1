@@ -46,3 +46,6 @@ if((Get-Content -LiteralPath $failLog -Raw) -notmatch 'FICTIONAL_SQL_IMPORT_FAIL
 }
 Write-Host 'PASS: actual simulated SQL importer failure remains an exit-code 7, not silently accepted.'
 Write-Host 'ALL PASS: fictional PowerShell-native-stream regression only. No production data accessed.'
+# A deliberately simulated exit 7 above leaves LASTEXITCODE=7 globally.
+# All assertions passed, so explicitly return success for GitHub Actions.
+exit 0
