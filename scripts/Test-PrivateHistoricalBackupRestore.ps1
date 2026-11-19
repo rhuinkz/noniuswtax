@@ -58,6 +58,11 @@ $report=[ordered]@{
     code_archive_version=$null
     code_archive_has_private_config=$false
     code_archive_has_storage=$false
+    isolated_temporary_set_user_privilege_granted=$false
+    isolated_temporary_set_user_privilege_revoked=$false
+    private_source_backup_rewritten=$false
+    restored_trigger_runtime_definers_verified=$false
+    local_restore_privilege_note='Only a temporary isolated Docker DB privilege; no Hostinger access or grants.'
     sql_import_docker_exit_code=$null
     sql_metadata_docker_exit_code=$null
     sql_fk_docker_exit_code=$null
@@ -411,6 +416,17 @@ try{
     # The exact Compose project is separate from all prior synthetic test DBs.
     DoDocker ($compose + @('down','--volumes','--remove-orphans'))
     DoDocker ($compose + @('up','-d','--wait','db'))
+    # MariaDB 11.4 requires SET USER for creating an explicit foreign
+    # DEFINER in restored triggers. Grant only to the dedicated importer
+    # and only inside this disposable isolated DB. Not production SQL.
+    # Source SQL is preserved byte for byte; no DEFINER rewriting.
+    $rootCli='MYSQL_PWD="$MARIADB_ROOT_PASSWORD" exec mariadb --user=root --execute "$1"'
+    $grantSql="GRANT SET USER ON *.* TO 'nonius_private_import'@'%'"
+    $revokeSql="REVOKE SET USER ON *.* FROM 'nonius_private_import'@'%'"
+    $grantCmd=$compose+@('exec','-T','db','sh','-ec',$rootCli,'local-recovery-grant',$grantSql)
+    Write-Host 'Applying temporary local-only DEFINER restoration privilege to disposable DB importer...'
+    DoDocker $grantCmd
+    $report.isolated_temporary_set_user_privilege_granted=$true
     Write-Host 'Restoring the full historical SQL to an offline isolated MariaDB...'
     $cli='MYSQL_PWD="$DB_PASS" mariadb --batch --skip-column-names --host="$DB_HOST" --user="$DB_USER" "$DB_NAME"'
     $importCommand=if($env:NONIUS_PRIVATE_SQL_FORMAT -eq 'gzip'){'gzip -dc /private/input.backup | '+$cli}else{$cli+' < /private/input.backup'}
@@ -424,6 +440,11 @@ try{
         throw 'Private database import failed. Inspect private SQL log on your computer only. Do not upload it.'
     }
     $report.mysql_data_restored_to_disposable_docker=$true
+    # Revoke added capability as soon as the original SQL stream finishes.
+    # The subsequent read-only consistency checks need no global privilege.
+    $revokeCmd=$compose+@('exec','-T','db','sh','-ec',$rootCli,'local-recovery-revoke',$revokeSql)
+    DoDocker $revokeCmd
+    $report.isolated_temporary_set_user_privilege_revoked=$true
     Write-Host 'Verifying restored tables, triggers, migration 037 and row totals (aggregates only)...'
     $queryArgs=$compose+@('run','--rm','--no-deps','-T','--entrypoint','sh',
       'inspector','-ec',($cli+' < /private/report.sql'))
