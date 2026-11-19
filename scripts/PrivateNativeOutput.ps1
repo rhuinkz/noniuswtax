@@ -20,15 +20,30 @@ function Invoke-PrivateNativeLogged {
         $ErrorActionPreference='Continue'
         $LASTEXITCODE=-9999
         if($CaptureStdout){
-            # The caller may consume only vetted aggregate DB metadata.
-            # Native stderr is written exclusively to a private local log.
-            $out=@(& $Program @Arguments 2> $PrivateLogPath)
+            # Avoid native-command pipelines: in Windows PowerShell 5.1
+            # LASTEXITCODE can be scoped to an inner pipeline, leaving
+            # a stale exit value in the caller. Redirect direct to files,
+            # capture the exit code immediately, then read only aggregate
+            # stdout back into memory. Both files stay outside Git.
+            $privateStdoutPath=$PrivateLogPath+'.stdout'
+            try {
+                & $Program @Arguments 1> $privateStdoutPath 2> $PrivateLogPath
+                $nativeExit=[int]$LASTEXITCODE
+                if(Test-Path -LiteralPath $privateStdoutPath){
+                    $out=@(Get-Content -LiteralPath $privateStdoutPath)
+                }
+            }finally{
+                if(Test-Path -LiteralPath $privateStdoutPath){
+                    Remove-Item -LiteralPath $privateStdoutPath -Force
+                }
+            }
         }else{
             # Import can output sensitive SQL details on either stream.
             # Keep BOTH streams in private log OUTSIDE the repository.
-            & $Program @Arguments *>&1 | Out-File -LiteralPath $PrivateLogPath -Encoding UTF8
+            # No pipeline: retain the real docker.exe exit code.
+            & $Program @Arguments 1> $PrivateLogPath 2>&1
+            $nativeExit=[int]$LASTEXITCODE
         }
-        $nativeExit=[int]$LASTEXITCODE
     }finally{
         $ErrorActionPreference=$previousPreference
     }
