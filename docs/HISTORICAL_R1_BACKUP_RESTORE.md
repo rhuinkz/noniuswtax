@@ -78,6 +78,24 @@ The dedicated CI creates fully fictional Hostinger account backups to verify suc
 
 **Next action after GitHub CI passes:** Fetch/Pull the draft `release/production-go-no-go-plan` branch, run the original command once more, and share only the inspected aggregate `readiness-results/private-backup-restore-summary.json`. If selected-site duplicates are reported, obtain a **site-specific complete** NONIUSWTAX file backup using the authorized Hostinger File Manager/Backups interface rather than weakening the verification. The 24-hour file/DB timestamp difference still requires independent R1 provenance review, and R1 remains unsigned.
 
+### Site identification with 3 app roots and 839 nested archives — 19 November 2026
+
+The owner used the correct private SQL.gz and the Hostinger full-site TAR. The SQL preflight passed, and the archive inventory reports **three bootstrap application roots, zero paths explicitly matching `noniuswtax.depedtagb.online`, and 839 nested archive files**. The verifier correctly stopped **before Docker**, because folder names alone cannot distinguish one installed app from two other copies. **No raw TAR listing, source code, config or private records were shared.**
+
+The updated checker first identifies the source's exact `APP_NAME = 'Non-IUS Withholding Tax Monitoring'` and installed `APP_VERSION` in each candidate's `lib/bootstrap.php`. If paths do not identify the domain and more than one app is present, it then reads each candidate's **own `config.local.php` inside the TAR, directly into process memory only**, and checks **the literal, exact target database name `u574137232_noniuswtax` and site URL `noniuswtax.depedtagb.online`**. **No PHP is executed, no password or config text is logged, no file is extracted, and no identifying archive path is emitted.** Configuration is never copied into GitHub, reports or logs. It proceeds only if exactly one candidate satisfies all identity checks. The new JSON summary includes only counts and codes:
+
+- `code_archive_nonius_signature_candidates` — candidates with verified NONIUSWTAX code signature;
+- `code_archive_target_db_candidates` — signed candidates with expected DB name;
+- `code_archive_target_url_candidates` — signed candidates with expected base URL;
+- `code_archive_verified_identity_candidates` — candidates satisfying **all** identity checks;
+- `code_archive_identity_method` and `code_archive_site_selection` — non-sensitive selection or refusal reason.
+
+If there are zero verified identities, the archive may be an unrelated account backup or may lack an installed configuration. If multiple match, there are ambiguous application copies. Both situations **FAIL before Docker** and require a clean **site-specific full files backup** from Hostinger, not a manually guessed directory. A unique confirmed candidate still undergoes duplicate-path, required-file, signature and database baseline checks before any restore. The 839 nested archive files are not unpacked or inspected recursively.
+
+**CI tested this exact structural pattern using only fictional data: 3 unscoped app roots, no matching folder path, 839 nested mock archive files and one local config matching both required identity markers — PASS. Two matching configs — DENIED. No matching config — DENIED.** This CI evidence does not prove which private historical TAR entry is the actual deployed site.
+
+The owner can Fetch/Pull `release/production-go-no-go-plan` and rerun the same private one-command verification. If it reports `NO_VERIFIED_INSTALLED_IDENTITY`, `AMBIGUOUS_INSTALLED_IDENTITY` or `AMBIGUOUS_DUPLICATE_SITE_FILES`, stop and supply only the aggregate report. Do not send site archive file lists, configuration, SQL contents, or credentials. R1 approval, independently verified backup time consistency and all production approval gates remain **PENDING**.
+
 ## 4. The single report and interpretation
 
 The ignored local output is `readiness-results/private-backup-restore-summary.json` (no row contents, names, TINs, emails, passwords, account info or SQL statements).
