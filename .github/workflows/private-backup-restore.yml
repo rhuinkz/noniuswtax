@@ -59,6 +59,17 @@ jobs:
               b=b'FICTIONAL NON-SENSITIVE STORAGE'
               info=tarfile.TarInfo('storage/fake.txt');info.size=len(b)
               tar.addfile(info,io.BytesIO(b))
+          # Hostinger-like account archive with two independent app roots.
+          # The target-domain root must be chosen; filenames are fictional.
+          with tarfile.open('/tmp/nonius-hostinger-multisite.20261117211501.tar.gz','w:gz') as tar:
+              for domain in ('noniuswtax.depedtagb.online','other.example.com'):
+                  for p in source:
+                      tar.add(p,arcname='domains/'+domain+'/public_html/'+p)
+          with tarfile.open('/tmp/nonius-irrelevant-site.tar.gz','w:gz') as tar:
+              b=b'This is NOT the application'
+              info=tarfile.TarInfo('account-storage/other-content.txt')
+              info.size=len(b)
+              tar.addfile(info,io.BytesIO(b))
           info={'report_type':'SCHEMA_ONLY_NO_PRODUCTION_RECORDS',
                 'schema':{'format':'NONIUS_SCHEMA_PREFLIGHT_V1',
                           'tables':[{'name':n} for n in tables],
@@ -122,6 +133,47 @@ jobs:
               throw Error('Local DB restore not complete or dangerously marked approved');
           }
           console.log('PASS: fictional plain SQL+ZIP restored; 21 tables/177 columns/14 triggers, no live data');
+          NODE
+      - name: Identify the right website from a full two-domain Hostinger archive
+        shell: bash
+        run: |
+          # Filename times are intentionally different; technical restore may
+          # succeed but point-in-time approval remains explicitly false.
+          cp /tmp/nonius-fixture.sql.gz /tmp/nonius-testdb.20261118211501.sql.gz
+          pwsh -NoProfile -File ./scripts/Test-PrivateHistoricalBackupRestore.ps1 -FullSqlPath /tmp/nonius-testdb.20261118211501.sql.gz -WebsiteArchivePath /tmp/nonius-hostinger-multisite.20261117211501.tar.gz
+          node - <<'NODE'
+          const r=require('./readiness-results/private-backup-restore-summary.json');
+          if(r.test_status!=='LOCAL_RESTORE_VERIFIED_R1_SIGNOFF_PENDING'||
+             r.code_archive_app_root_candidates!==2||
+             r.code_archive_expected_domain_candidates!==1||
+             r.code_archive_site_selection!=='EXPECTED_DOMAIN'||
+             r.code_archive_version!=='0.4.56'||
+             r.database_and_site_backup_timestamps_match!==false||
+             r.backup_pair_timestamp_status!=='DIFFERENT_TIMESTAMPS_REVIEW_REQUIRED'||
+             r.source_backup_point_in_time_consistency_independently_verified!==false ||
+             r.final_r1_review_signed!==false ||
+             r.restored_trigger_count!==14){
+              throw Error('Hostinger multi-site archive incorrectly selected or mismatched timestamps incorrectly approved');
+          }
+          console.log('PASS: safely selected only expected NONIUSWTAX root from two domains; 24-hour mismatch remains review-only');
+          NODE
+      - name: Refuse an unrelated full-account archive without an application
+        shell: bash
+        run: |
+          set +e
+          pwsh -NoProfile -File ./scripts/Test-PrivateHistoricalBackupRestore.ps1 -FullSqlPath /tmp/nonius-fixture.sql.gz -WebsiteArchivePath /tmp/nonius-irrelevant-site.tar.gz
+          status=$?
+          set -e
+          test "$status" -eq 1
+          node - <<'NODE'
+          const r=require('./readiness-results/private-backup-restore-summary.json');
+          if(r.mysql_data_restored_to_disposable_docker!==false ||
+             r.code_archive_site_selection!=='NO_APPLICATION_ROOT' ||
+             r.code_archive_app_root_candidates!==0 ||
+             r.test_status!=='RESTORE_TEST_FAILED'){
+             throw Error('No-application backup was not safely refused');
+          }
+          console.log('PASS: irrelevant archive rejected before any Docker import without exposing file paths');
           NODE
       - name: Rehearse Hostinger compressed SQL.gz and site tar.gz without extraction
         shell: bash
