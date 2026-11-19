@@ -13,6 +13,10 @@ services:
       MARIADB_PASSWORD: nonius-local-restore-only
     volumes:
       - isolated-private-db:/var/lib/mysql
+      - type: bind
+        source: ./scripts/private-recovery-privilege.sh
+        target: /private/recovery-privilege.sh
+        read_only: true
     networks: [privateonly]
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
