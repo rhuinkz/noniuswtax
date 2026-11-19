@@ -79,6 +79,26 @@ jobs:
               bad=tarfile.TarInfo('./../fake-escape.txt')
               bad.size=len(payload)
               tar.addfile(bad,io.BytesIO(payload))
+          # A duplicate in an unrelated Hostinger domain is only an
+          # independently reviewed archive-completeness issue, not a reason
+          # to mistake the intended app for a different website.
+          with tarfile.open('/tmp/nonius-duplicate-unrelated.tar.gz','w:gz') as tar:
+              for domain in ('noniuswtax.depedtagb.online','other.example.com'):
+                  for p in source:
+                      tar.add(p,arcname='domains/'+domain+'/public_html/'+p)
+              tar.add('assets/app.js',arcname='domains/other.example.com/public_html/assets/app.js')
+          # A repeated PHP bootstrap IN the target domain MUST be rejected,
+          # even if both entries appear byte-for-byte identical.
+          with tarfile.open('/tmp/nonius-duplicate-selected.tar.gz','w:gz') as tar:
+              for p in source:
+                  tar.add(p,arcname='domains/noniuswtax.depedtagb.online/public_html/'+p)
+              tar.add('lib/bootstrap.php',arcname='domains/noniuswtax.depedtagb.online/public_html/lib/bootstrap.php')
+          # Alias collision between "./lib/bootstrap.php" and
+          # "lib/bootstrap.php" inside the selected application is unsafe.
+          with tarfile.open('/tmp/nonius-duplicate-alias.tar.gz','w:gz') as tar:
+              for p in source:
+                  tar.add(p,arcname='./'+p)
+              tar.add('lib/bootstrap.php',arcname='lib/bootstrap.php')
           # Hostinger-like account archive with two independent app roots.
           # The target-domain root must be chosen; filenames are fictional.
           with tarfile.open('/tmp/nonius-hostinger-multisite.20261117211501.tar.gz','w:gz') as tar:
@@ -227,6 +247,62 @@ jobs:
              throw Error('Parent traversal fixture not refused before Docker restore');
           }
           console.log('PASS: parent traversal path rejected before Docker import.');
+          NODE
+      - name: Allow repeated file paths solely outside expected application (report warning)
+        shell: bash
+        run: |
+          pwsh -NoProfile -File ./scripts/Test-PrivateHistoricalBackupRestore.ps1 -FullSqlPath /tmp/nonius-fixture.sql.gz -WebsiteArchivePath /tmp/nonius-duplicate-unrelated.tar.gz
+          node - <<'NODE'
+          const r=require('./readiness-results/private-backup-restore-summary.json');
+          if(r.test_status!=='LOCAL_RESTORE_VERIFIED_R1_SIGNOFF_PENDING' ||
+             r.restored_table_count!==21 || r.restored_trigger_count!==14 ||
+             r.code_archive_site_selection!=='EXPECTED_DOMAIN' ||
+             r.code_archive_duplicate_file_entries!==1 ||
+             r.code_archive_duplicate_selected_site_entries!==0 ||
+             r.code_archive_duplicate_unrelated_entries!==1 ||
+             r.code_archive_duplicate_scope!=='ONLY_OUTSIDE_SELECTED_SITE_REVIEW' ||
+             r.final_r1_review_signed!==false){
+              throw Error('Unrelated duplicate file should remain a reviewer warning, not a silent signoff');
+          }
+          console.log('PASS: selected app intact, unrelated TAR duplicate counted and still requires human backup review.');
+          NODE
+      - name: Refuse repeated target-app PHP file before any Docker restore
+        shell: bash
+        run: |
+          set +e
+          pwsh -NoProfile -File ./scripts/Test-PrivateHistoricalBackupRestore.ps1 -FullSqlPath /tmp/nonius-fixture.sql.gz -WebsiteArchivePath /tmp/nonius-duplicate-selected.tar.gz
+          code=$?
+          set -e
+          test "$code" -eq 1
+          node - <<'NODE'
+          const r=require('./readiness-results/private-backup-restore-summary.json');
+          if(r.test_status!=='RESTORE_TEST_FAILED' ||
+             r.mysql_data_restored_to_disposable_docker!==false ||
+             r.code_archive_site_selection!=='AMBIGUOUS_DUPLICATE_SITE_FILES' ||
+             r.code_archive_duplicate_file_entries!==1 ||
+             r.code_archive_duplicate_selected_site_entries!==1 ||
+             r.code_archive_duplicate_scope!=='SELECTED_SITE_AMBIGUOUS'){
+             throw Error('Repeated target PHP file must fail before restoring any real data');
+          }
+          console.log('PASS: selected-site duplicate blocked with aggregate-only reason.');
+          NODE
+      - name: Refuse normalization alias collisions inside selected app
+        shell: bash
+        run: |
+          set +e
+          pwsh -NoProfile -File ./scripts/Test-PrivateHistoricalBackupRestore.ps1 -FullSqlPath /tmp/nonius-fixture.sql.gz -WebsiteArchivePath /tmp/nonius-duplicate-alias.tar.gz
+          code=$?
+          set -e
+          test "$code" -eq 1
+          node - <<'NODE'
+          const r=require('./readiness-results/private-backup-restore-summary.json');
+          if(r.test_status!=='RESTORE_TEST_FAILED' ||
+             r.mysql_data_restored_to_disposable_docker!==false ||
+             r.code_archive_duplicate_alias_entries!==1 ||
+             r.code_archive_duplicate_selected_site_entries!==1){
+             throw Error('Alias collision in app was not rejected before SQL import');
+          }
+          console.log('PASS: ./ alias collision denied with no private archive paths printed.');
           NODE
       - name: Rehearse Hostinger compressed SQL.gz and site tar.gz without extraction
         shell: bash
