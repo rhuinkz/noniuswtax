@@ -61,6 +61,23 @@ The revised preflight skips ONLY the harmless standalone TAR archive root marker
 
 The CI workflow separately tests (a) a fictional TAR with a standalone `./` root marker and a valid application, and (b) a similarly rooted TAR containing a malicious `../` file that must still be rejected **before any SQL import**. This is a test-tool correction only; R1 remains PENDING until the *real* private backup is restored and backup provenance independently approved.
 
+### Duplicate normalized TAR entries — November 19, 2026
+
+The owner retried with the verified correct local SQL.gz backup and the same private Hostinger TAR after the prior root-marker fix. The SQL preflight passed, the archive inspector advanced past unsafe-path rejection and then stopped on `Duplicate normalized website archive path`, **before Docker startup**. This means at least one TAR file entry repeats a normalized relative path; the cause and specific path(s) remain unknown because the real TAR listing was not shared. It is **not automatically safe** to ignore duplicates inside deployed PHP application code, which could make version, migration or rollback identity ambiguous.
+
+The revised diagnostic collects and emits **counts and non-sensitive scope codes only**:
+- `code_archive_duplicate_file_entries`: total repeated normalized file entries (never filenames)
+- `code_archive_duplicate_exact_path_entries`: repeated literal entry path
+- `code_archive_duplicate_alias_entries`: distinct entry names that normalize to the same path, such as `./app.php` and `app.php`
+- `code_archive_duplicate_selected_site_entries` and `code_archive_duplicate_unrelated_entries`: whether repeats belong to the specifically selected NONIUSWTAX application or other archived domains/content
+- `code_archive_duplicate_scope`: `NONE`, `ONLY_OUTSIDE_SELECTED_SITE_REVIEW`, or `SELECTED_SITE_AMBIGUOUS`
+
+**Fail-closed rule:** any repeated normalized file inside the selected app (especially `lib/bootstrap.php`, `lib/migrations.php`, `update.php` or private configuration) causes `AMBIGUOUS_DUPLICATE_SITE_FILES` **before any SQL import**. No automatic first-entry/last-entry selection. Repeated entries *outside* the uniquely identified NONIUSWTAX root are permitted for **local verification only** and flagged for later backup-completeness review, because none are extracted or executed. A foreign-domain/ambiguous archive still fails.
+
+The dedicated CI creates fully fictional Hostinger account backups to verify success for an unrelated domain's duplicate, and fail-closed behavior for both exact repeated PHP entries and `./` normalization aliases inside the selected site. All genuine backups and TAR listings stay on the owner's private encrypted disk.
+
+**Next action after GitHub CI passes:** Fetch/Pull the draft `release/production-go-no-go-plan` branch, run the original command once more, and share only the inspected aggregate `readiness-results/private-backup-restore-summary.json`. If selected-site duplicates are reported, obtain a **site-specific complete** NONIUSWTAX file backup using the authorized Hostinger File Manager/Backups interface rather than weakening the verification. The 24-hour file/DB timestamp difference still requires independent R1 provenance review, and R1 remains unsigned.
+
 ## 4. The single report and interpretation
 
 The ignored local output is `readiness-results/private-backup-restore-summary.json` (no row contents, names, TINs, emails, passwords, account info or SQL statements).
