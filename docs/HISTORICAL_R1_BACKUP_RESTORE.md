@@ -145,6 +145,22 @@ MariaDB 11.4 documentation states that creating triggers with explicit foreign `
 
 **Next:** after all GitHub CI checks pass, Fetch/Pull `release/production-go-no-go-plan`, rerun the same owner-private R1 command *once*, and share **only the screened aggregate `readiness-results/private-backup-restore-summary.json`**. The original DB and website backup need not be exported again. The dated-backup mismatch and out-of-app duplicate archive entry remain independent R1 review issues. **Production NO-GO.**
 
+### Windows restore privilege helper argument failure — November 19, 2026
+
+The owner reran R1 using the original **private** NONIUSWTAX SQL.gz backup and site TAR. SQL preflight PASS, selected-site identification PASS, one duplicate outside the app flagged, local MariaDB 11.4.13 healthy. The new "Applying temporary local-only DEFINER restoration privilege" step then displayed **the entire MariaDB command-line HELP page** and failed with `Local Docker operation failed (exit 1)`. The database SQL import was **never started**. The temporary container/volume/network were removed. The console contains no evidence of corrupt SQL or a failed restoration beyond the grant helper itself.
+
+**Cause:** The earlier grant helper passed a shell code string plus a second positional argument to `docker compose exec ... sh -ec ...` from Windows PowerShell 5.1. In this environment the MariaDB `--execute` argument was not delivered as intended, so the client displayed usage and returned 1. This is **a local command argument marshaling defect**, not a new permission error from the uploaded backup.
+
+**Fix:** The draft now mounts `scripts/private-recovery-privilege.sh` **read-only into the disposable database container**. PowerShell calls only:
+
+```powershell
+docker compose -p nonius-private-recovery -f compose.private-backup-restore.yml exec -T db sh /private/recovery-privilege.sh grant
+```
+
+This shell file uses LF line endings under the existing `.gitattributes`, validates `grant`/`revoke` operations, reads the isolated DB root password only from the disposable container environment, and executes `GRANT SET USER ...` / `REVOKE SET USER ...` without inline SQL positional arguments passing through PowerShell. It never runs on Hostinger; the source SQL.gz remains read-only. The report still marks granted/revoked flags separately. The temporary database and its privileges are destroyed after the rehearsal; **R1 approval remains pending even on technical success**.
+
+**Required regression:** Windows PowerShell 5.1 checks literal no-quoting command arguments and LF shell file. Linux Docker runs both negative and positive fictional foreign-`DEFINER` restore tests, checking the temporary local grant, original source integrity and revoke. No institutional records are in CI. **Do not rerun the owner's actual restore until those checks pass.**
+
 ## 4. The single report and interpretation
 
 The ignored local output is `readiness-results/private-backup-restore-summary.json` (no row contents, names, TINs, emails, passwords, account info or SQL statements).
