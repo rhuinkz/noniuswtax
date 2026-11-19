@@ -4,6 +4,7 @@ on:
     paths:
       - 'compose.private-backup-restore.yml'
       - 'scripts/Test-PrivateHistoricalBackupRestore.ps1'
+      - 'scripts/private-recovery-privilege.sh'
       - 'scripts/PrivateNativeOutput.ps1'
       - 'scripts/Diagnose-PrivateImportLog.ps1'
       - 'tests/release/private-import-diagnostic-fixture.ps1'
@@ -29,6 +30,23 @@ jobs:
             throw 'This regression must run in Windows PowerShell 5.1.'
           }
           & .\tests\release\windows-powershell-native-stderr.ps1
+      - name: Assert Windows-cloned grant/revoke script uses LF and avoids fragile inline shell arguments
+        shell: powershell
+        run: |
+          $runner = Get-Content .\scripts\Test-PrivateHistoricalBackupRestore.ps1 -Raw
+          $localPrivilege = Get-Content .\scripts\private-recovery-privilege.sh -Raw
+          $grant = "`$grantCmd=`$compose+@('exec','-T','db','sh','/private/recovery-privilege.sh','grant')"
+          $revoke = "`$revokeCmd=`$compose+@('exec','-T','db','sh','/private/recovery-privilege.sh','revoke')"
+          if (-not $runner.Contains($grant) -or -not $runner.Contains($revoke)) {
+            throw 'PowerShell must use plain argv with mounted grant/revoke script.'
+          }
+          if ($localPrivilege.Contains("`r")) {
+            throw 'Unix shell helper must keep LF line endings after Git checkout on Windows.'
+          }
+          if ($localPrivilege -notmatch 'MYSQL_PWD=' -or $localPrivilege -notmatch 'SET USER') {
+            throw 'Dedicated disposable DB privilege helper is incomplete.'
+          }
+          Write-Host 'PASS: Windows PowerShell 5.1 has literal nonquoted exec args, local shell script is LF-only.'
       - name: Classify fictional confidential import error codes without showing any record text (PS 5.1)
         shell: powershell
         run: |
@@ -187,6 +205,7 @@ jobs:
           node - <<'NODE'
           const d=require('/tmp/nonius-private-compose.json');
           if(!d.networks.privateonly.internal || d.services.web || d.services.db.ports?.length ||
+             !d.services.db.volumes.some(v=>v.target==='/private/recovery-privilege.sh' && v.read_only===true) ||
              d.services.inspector.volumes.find(v=>v.target==='/private/input.backup')?.read_only!==true){
               throw Error('Private database importer has unsafe container exposure');
           }
