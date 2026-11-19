@@ -18,7 +18,8 @@ function Invoke-PrivateNativeLogged {
         # Scoped to this helper; restore regardless of execution outcome.
         # Error records emitted from native stderr must not bypass LASTEXITCODE.
         $ErrorActionPreference='Continue'
-        $LASTEXITCODE=-9999
+        # Do not assign a local $LASTEXITCODE sentinel: on Windows PowerShell
+        # 5.1 it can shadow the native process exit code and report a false failure.
         if($CaptureStdout){
             # Avoid native-command pipelines: in Windows PowerShell 5.1
             # LASTEXITCODE can be scoped to an inner pipeline, leaving
