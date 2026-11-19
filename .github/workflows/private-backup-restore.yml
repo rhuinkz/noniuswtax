@@ -65,7 +65,13 @@ jobs:
           assert sum(len(c) for c in cols.values()) == 177
           ddl=['CREATE TABLE '+name+' ('+','.join(cols[name])+') ENGINE=InnoDB;' for name in tables]
           for i,name in enumerate(extra,1):
-              ddl.append(f'CREATE TRIGGER fake_guard_{i:02d} BEFORE UPDATE ON {name} FOR EACH ROW SET NEW.id=OLD.id;')
+              if i == 1:
+                  # A foreign explicit DEFINER reproduces the hosted-user
+                  # 1227 privilege mismatch on a disposable test database.
+                  # The named user is FICTIONAL and does not exist locally.
+                  ddl.append(f'CREATE DEFINER=`ci_fictional_host_user`@`ci_fictional_remote` TRIGGER fake_guard_{i:02d} BEFORE UPDATE ON {name} FOR EACH ROW SET NEW.id=OLD.id;')
+              else:
+                  ddl.append(f'CREATE TRIGGER fake_guard_{i:02d} BEFORE UPDATE ON {name} FOR EACH ROW SET NEW.id=OLD.id;')
           ddl+=["INSERT INTO transactions (id,checked_snapshot_hash) VALUES ('FICTIONAL-TX','"+"a"*64+"');",
                 "INSERT INTO schema_migrations (id,status) VALUES ('036_example','applied');",
                 "INSERT INTO transaction_history (id) VALUES ('FICTIONAL-HISTORY');",
@@ -220,6 +226,10 @@ jobs:
           node - <<'NODE'
           const r=require('./readiness-results/private-backup-restore-summary.json');
           if(r.test_status!=='LOCAL_RESTORE_VERIFIED_R1_SIGNOFF_PENDING'||
+             r.isolated_temporary_set_user_privilege_granted!==true||
+             r.isolated_temporary_set_user_privilege_revoked!==true||
+             r.restored_trigger_runtime_definers_verified!==false||
+             r.private_source_backup_rewritten!==false||
              r.restored_table_count!==21||r.restored_column_count!==177||
              r.restored_trigger_count!==14||r.restored_migration037_row_count!==0||
              r.restored_transaction_count!==1||r.total_fk_orphans!==0||
@@ -228,7 +238,7 @@ jobs:
              r.source_backup_point_in_time_consistency_independently_verified!==false){
               throw Error('Local DB restore not complete or dangerously marked approved');
           }
-          console.log('PASS: fictional plain SQL+ZIP restored; 21 tables/177 columns/14 triggers, no live data');
+          console.log('PASS: restored 14 triggers including a fictional foreign DEFINER, granted+revoked isolated SET USER, and preserved source backup.');
           NODE
       - name: Identify the right website from a full two-domain Hostinger archive
         shell: bash
