@@ -8,6 +8,18 @@ function respond(mixed $data, int $status=200): never { http_response_code($stat
 function body_json(): array { $raw=file_get_contents('php://input'); $v=json_decode($raw?:'{}',true); if(!is_array($v)) throw new RuntimeException('Invalid request.'); return $v; }
 function fail(Throwable $e): never { error_log('NonIUS API: '.$e->getMessage()); $m=$e->getMessage(); if($e instanceof PDOException) $m='Unable to save. Check for duplicate records or reload and try again.'; $status=$m==='Please sign in to continue.'?401:400; respond(['error'=>$m],$status); }
 
+// Shared-supplier TIN conflicts return the existing record so the client can reuse it.
+function existing_supplier_for_tin(PDO $pdo, string $tin, string $excludeId=''): ?array {
+    $stmt=$pdo->prepare('SELECT id,name,tin,active FROM suppliers WHERE tin=? AND id<>? LIMIT 1');
+    $stmt->execute([$tin,$excludeId]);
+    $row=$stmt->fetch(PDO::FETCH_ASSOC);
+    return $row?['id'=>(string)$row['id'],'name'=>(string)$row['name'],'tin'=>(string)$row['tin'],'active'=>(bool)$row['active']]:null;
+}
+function respond_supplier_tin_conflict(array $supplier): never {
+    respond(['error'=>'Supplier TIN already exists for '.$supplier['name'].'. Use the shared supplier instead of creating a duplicate.',
+        'code'=>'SUPPLIER_TIN_EXISTS','supplier'=>$supplier],409);
+}
+
 function division_logo_storage_dir(): string { return ROOT_PATH . '/storage'; }
 function remove_division_logo_files(?string $keep=null): void {
     $dir=division_logo_storage_dir();
@@ -878,6 +890,7 @@ try {
     $actor=require_member();
     if($_SERVER['REQUEST_METHOD']==='GET') {
         $scope=(string)($_GET['scope']??'bootstrap');
+        if($scope==='suppliers') respond(['suppliers'=>master_all('suppliers'),'csrf'=>csrf_token()]);
         if($scope==='notifications') respond(['notifications'=>notification_response($actor),'password_reset_requests'=>is_admin_or_owner($actor)?pending_password_resets_for_actor($actor):[],'csrf'=>csrf_token()]);
         if($scope==='history') respond(['history'=>transaction_history_for_id_actor($actor,valid_text($_GET['id']??null,'Transaction',64)),'csrf'=>csrf_token()]);
         if($scope==='transaction') respond(['transaction'=>transaction_detail_response($actor,valid_text($_GET['id']??null,'Transaction',64)),'csrf'=>csrf_token()]);
@@ -977,9 +990,7 @@ try {
             // Keep the first profile mirrored in the legacy fields so older snapshots/tools remain compatible.
             $r['transaction_type']=$profiles[0]['transaction_type'];$r['business_atc']=$profiles[0]['business_atc'];$r['ewt_atc']=$profiles[0]['ewt_atc'];
             // TIN is normalized first, so 9/12/14 digit forms of the same TIN cannot create duplicate suppliers.
-            $tinCheck=$pdo->prepare('SELECT id,name FROM suppliers WHERE tin=? AND id<>? LIMIT 1');
-            $tinCheck->execute([$r['tin'],$previous['id']??'']);
-            if($duplicate=$tinCheck->fetch()) throw new RuntimeException('Supplier TIN already exists for '.$duplicate['name'].'. Open the existing supplier instead of creating a duplicate.');
+            if($duplicate=existing_supplier_for_tin($pdo,$r['tin'],$previous['id']??'')) respond_supplier_tin_conflict($duplicate);
         }
         unset($r['id'],$r['version'],$r['logo_data_url'],$r['remove_logo']); $payload=json_encode_safe($r); if(strlen($payload)>12000)throw new RuntimeException('Record is too large.');
         $pdo->beginTransaction();
@@ -1003,7 +1014,16 @@ try {
             audit_event($actor,'save-master',$id,['kind'=>$kind,'before'=>$previous,'after'=>$r],$pdo);$pdo->commit();
             if($kind==='division'&&$cleanupLogoAfterCommit)remove_division_logo_files($newLogoBasename);
             respond(['ok'=>true,'id'=>$id,'default_account'=>$autoSchoolAccount?['username'=>$autoSchoolAccount['username'],'temporary_password'=>$autoSchoolAccount['password']]:null]);
-        }catch(Throwable $e){if($pdo->inTransaction())$pdo->rollBack();if($newLogoFile&&is_file($newLogoFile))@unlink($newLogoFile);throw $e;}
+        }catch(Throwable $e){
+            if($pdo->inTransaction())$pdo->rollBack();
+            if($newLogoFile&&is_file($newLogoFile))@unlink($newLogoFile);
+            // A second school may insert the same normalized TIN after our preflight SELECT.
+            // Only classify an actual MySQL duplicate-key error as a shared-supplier collision.
+            if($kind==='suppliers'&&$e instanceof PDOException&&(int)($e->errorInfo[1]??0)===1062){
+                if($duplicate=existing_supplier_for_tin($pdo,$r['tin'],$previous['id']??'')) respond_supplier_tin_conflict($duplicate);
+            }
+            throw $e;
+        }
     }
 
     if($action==='saveMember'){
