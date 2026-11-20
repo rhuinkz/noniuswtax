@@ -1,0 +1,78 @@
+name: Supplier TIN concurrency (disposable MariaDB)
+on:
+  push:
+    branches:
+      - fix/concurrent-supplier-tin-ux
+  pull_request:
+    paths:
+      - api.php
+      - assets/app.js
+      - tests/supplier-concurrency-*.py
+      - tests/supplier-concurrency-*.php
+      - .github/workflows/supplier-concurrency.yml
+jobs:
+  supplier-mysql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: localtestonly
+          MARIADB_DATABASE: nonius_supplier_test
+          MARIADB_USER: nonius_test
+          MARIADB_PASSWORD: localtestonly
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_mysql, mbstring
+          coverage: none
+      - name: Create isolated test-only configuration
+        run: |
+          cat > config.local.php <<'PHP'
+          <?php
+          return [
+            'base_url' => 'http://127.0.0.1:8907',
+            'db' => [
+              'host' => '127.0.0.1',
+              'port' => 3306,
+              'name' => 'nonius_supplier_test',
+              'user' => 'nonius_test',
+              'password' => 'localtestonly',
+            ],
+          ];
+          PHP
+          chmod 0600 config.local.php
+      - name: Create fresh schema and fictional school accounts
+        env:
+          NONIUS_TEST_PASSWORD: workshop-only-strong-password
+        run: php tests/supplier-concurrency-seed.php
+      - name: Start real PHP HTTP workers
+        run: |
+          PHP_CLI_SERVER_WORKERS=8 php -S 127.0.0.1:8907 -t . > "$RUNNER_TEMP/nonius-php.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/nonius-php.pid"
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --output /dev/null http://127.0.0.1:8907/login.php; then
+              echo 'PHP server ready'
+              break
+            fi
+            sleep 1
+          done
+          curl --fail --silent --output /dev/null http://127.0.0.1:8907/login.php
+      - name: Concurrent authenticated HTTP registrations against MariaDB
+        env:
+          NONIUS_TEST_URL: http://127.0.0.1:8907
+          NONIUS_TEST_PASSWORD: workshop-only-strong-password
+        run: python3 tests/supplier-concurrency-http.py
+      - name: Inspect PHP server errors on failure
+        if: failure()
+        run: tail -100 "$RUNNER_TEMP/nonius-php.log" || true
